@@ -1,0 +1,49 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Java
+*.class
+*.jar
+*.war
+.gradle/
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Misc
+.tmp/
+.cache/
