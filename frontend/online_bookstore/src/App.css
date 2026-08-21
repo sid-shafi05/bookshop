@@ -1,0 +1,172 @@
+/* client/src/App.css */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.app-container {
+  background-color: #f8fafc;
+  min-height: 100vh;
+}
+
+/* NAVBAR */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #1e293b;
+  color: white;
+  padding: 1rem 2rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #334155;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.cart-btn {
+  background-color: #2563eb;
+}
+
+/* TOAST MESSAGE */
+.toast-notification {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background-color: #10b981;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  font-weight: bold;
+  z-index: 1000;
+}
+
+/* CATALOG GRID */
+.catalog-container {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.section-title {
+  margin-bottom: 1.5rem;
+  color: #0f172a;
+}
+
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.book-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.book-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+}
+
+.book-cover-placeholder {
+  height: 200px;
+  background-color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  font-weight: bold;
+  text-align: center;
+  padding: 10px;
+}
+
+.book-cover-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-details {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.book-title {
+  font-size: 1.1rem;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.book-stock {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.book-price {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #2563eb;
+  margin-bottom: 1rem;
+}
+
+.card-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.btn-cart {
+  flex-grow: 1;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-cart:hover {
+  background-color: #1d4ed8;
+}
+
+.btn-wishlist {
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}

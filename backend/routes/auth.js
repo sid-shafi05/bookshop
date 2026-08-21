@@ -22,6 +22,10 @@ router.post('/signup', async (req, res) => {
       `INSERT INTO customers (customer_id) VALUES ($1)`,
       [newUser.user_id]
     );
+    //create the two ddefault things a customer needs
+    await pool.query(`INSERT INTO carts (customer_id) VALUES ($1)`, [newUser.user_id]);
+    await pool.query(`INSERT INTO wishlists (customer_id, wishlist_name) VALUES ($1, 'My Wishlist')`, [newUser.user_id]);
+
 
     res.status(201).json(newUser);
   } catch (err) {

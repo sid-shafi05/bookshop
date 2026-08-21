@@ -5,6 +5,9 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 app.use('/auth', require('./routes/auth'));
+app.use('/cart', require('./routes/cart'));
+const cors = require('cors');
+app.use(cors()); 
 
 app.get('/books', async (req, res) => {
   try {
