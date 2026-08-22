@@ -1,0 +1,1204 @@
+/* ====================================================================
+   FRONTEND STYLESHEET (Barnes & Noble / The Nile Aesthetic)
+   ==================================================================== */
+
+/* --------------------------------------------------------------------
+   1. GLOBAL RESET & BASE
+   -------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #faf9f6;
+  color: #2b2b2b;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bn-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------
+   2. NAVBAR & HEADER (Navbar.jsx)
+   -------------------------------------------------------------------- */
+.bn-header {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e8e6e1;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.2rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+}
+
+.logo-section h1 {
+  font-family: 'Georgia', 'Playfair Display', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #1a2e40;
+  cursor: pointer;
+}
+
+/* Search Bar */
+.search-container {
+  flex: 1;
+  max-width: 580px;
+  display: flex;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  background-color: #ffffff;
+}
+
+.search-container input {
+  flex: 1;
+  border: none;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  outline: none;
+  background: transparent;
+}
+
+.search-btn {
+  background-color: #1a2e40;
+  color: #ffffff;
+  border: none;
+  padding: 0 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Nav Actions (Right Side) */
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.nav-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #2b2b2b;
+  position: relative;
+  padding: 6px 8px;
+}
+
+.icon-symbol {
+  font-size: 1.1rem;
+}
+
+.badge {
+  background-color: #1a2e40;
+  color: #ffffff;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.signin-link-btn {
+  background: none;
+  border: 1px solid #1a2e40;
+  color: #1a2e40;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.signin-link-btn:hover {
+  background-color: #1a2e40;
+  color: #ffffff;
+}
+
+/* User Profile Dropdown Menu */
+.account-dropdown-wrapper {
+  position: relative;
+}
+
+.account-trigger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1a2e40;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.account-menu {
+  position: absolute;
+  top: 130%;
+  right: 0;
+  width: 220px;
+  background: #ffffff;
+  border: 1px solid #e8e6e1;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  padding: 8px 0;
+  z-index: 200;
+}
+
+.menu-header {
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-header strong {
+  color: #1a2e40;
+  font-size: 0.9rem;
+}
+
+.menu-header span {
+  color: #717171;
+  font-size: 0.8rem;
+}
+
+.role-tag {
+  display: inline-block;
+  background: #edf2f7;
+  color: #2b6cb0;
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 2px;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.account-menu hr {
+  border: none;
+  border-top: 1px solid #f0eee9;
+  margin: 6px 0;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  color: #2b2b2b;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background-color: #f7f6f2;
+}
+
+.signout-btn {
+  color: #c53030;
+}
+
+/* Category Subnav */
+.category-subnav {
+  background-color: #ffffff;
+  border-top: 1px solid #f0eee9;
+  border-bottom: 1px solid #e8e6e1;
+}
+
+.category-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+}
+
+.cat-pill {
+  background: none;
+  border: none;
+  padding: 12px 0;
+  font-size: 0.85rem;
+  color: #555555;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.cat-pill:hover, .cat-pill.active {
+  color: #1a2e40;
+  font-weight: 600;
+  border-bottom-color: #1a2e40;
+}
+
+/* --------------------------------------------------------------------
+   3. CATALOG & BOOK CARDS (BookCard.jsx & App.jsx)
+   -------------------------------------------------------------------- */
+.catalog-wrapper {
+  max-width: 1280px;
+  margin: 2rem auto 4rem auto;
+  padding: 0 2rem;
+  flex: 1;
+}
+
+.catalog-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid #e8e6e1;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.section-heading {
+  font-family: 'Georgia', serif;
+  font-size: 1.6rem;
+  color: #1a2e40;
+}
+
+.results-count {
+  font-size: 0.85rem;
+  color: #717171;
+}
+
+.sort-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.sort-box select {
+  padding: 6px 10px;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  background-color: #ffffff;
+  outline: none;
+}
+
+/* Book Grid */
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 2rem;
+}
+
+.book-card {
+  background: #ffffff;
+  border: 1px solid #e8e6e1;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.book-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+}
+
+.cover-wrapper {
+  height: 240px;
+  position: relative;
+  background-color: #f0eee9;
+  overflow: hidden;
+}
+
+.book-cover-art {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  background: linear-gradient(135deg, #eaddc7 0%, #c7b299 100%);
+}
+
+.art-icon {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.art-title {
+  font-family: 'Georgia', serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2b2b2b;
+}
+
+.wishlist-float-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #e8e6e1;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.book-meta {
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.genre-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: #8c827a;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.title-text {
+  font-family: 'Georgia', serif;
+  font-size: 1.05rem;
+  color: #1a2e40;
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.author-text {
+  font-size: 0.85rem;
+  color: #666666;
+  margin-bottom: 8px;
+}
+
+.rating-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.rating-stars {
+  color: #c4820a;
+  font-size: 0.8rem;
+}
+
+.rating-num {
+  font-size: 0.75rem;
+  color: #717171;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: auto;
+  margin-bottom: 12px;
+}
+
+.price-tag {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1a2e40;
+}
+
+.stock-indicator {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.stock-indicator.in-stock {
+  color: #2e7d32;
+}
+
+.stock-indicator.out-stock {
+  color: #c53030;
+}
+
+.cart-action-btn {
+  background-color: #1a2e40;
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cart-action-btn:hover:not(:disabled) {
+  background-color: #2b4c6f;
+}
+
+.cart-action-btn:disabled {
+  background-color: #e0ded9;
+  color: #999999;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------
+   4. SLIDE-OUT DRAWERS (CartDrawer.jsx & WishlistDrawer.jsx)
+   -------------------------------------------------------------------- */
+.drawer-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer-panel {
+  width: 400px;
+  max-width: 90vw;
+  background: #ffffff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.wishlist-drawer-panel {
+  width: 440px;
+}
+
+.drawer-top {
+  padding: 1.5rem;
+  border-bottom: 1px solid #e8e6e1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawer-top h3 {
+  font-family: 'Georgia', serif;
+  font-size: 1.2rem;
+  color: #1a2e40;
+}
+
+.close-x {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.drawer-items {
+  padding: 1.5rem;
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.empty-cart-view {
+  text-align: center;
+  color: #717171;
+  padding: 3rem 0;
+}
+
+.cart-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #f0eee9;
+}
+
+.row-info h4 {
+  font-family: 'Georgia', serif;
+  font-size: 0.95rem;
+  color: #1a2e40;
+}
+
+.row-price {
+  font-size: 0.85rem;
+  color: #666666;
+  font-weight: 600;
+}
+
+.row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-controls button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #c9c5be;
+  background: #ffffff;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.btn-remove {
+  border: none !important;
+  background: none !important;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.btn-move-cart {
+  background-color: #1a2e40;
+  color: #ffffff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 2px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.drawer-bottom {
+  padding: 1.5rem;
+  border-top: 1px solid #e8e6e1;
+  background-color: #faf9f6;
+}
+
+.bill-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.primary-checkout-btn {
+  width: 100%;
+  background-color: #2e7d32;
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+/* Wishlist Drawer Tabs & Form */
+.wishlist-tabs-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 1.5rem;
+  background-color: #faf9f6;
+  border-bottom: 1px solid #e8e6e1;
+}
+
+.tabs-scroller {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.wishlist-tab-btn {
+  background: #ffffff;
+  border: 1px solid #c9c5be;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555555;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wishlist-tab-btn.active {
+  background: #1a2e40;
+  color: #ffffff;
+  border-color: #1a2e40;
+}
+
+.delete-list-btn {
+  background: none;
+  border: none;
+  color: #c53030;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.inline-create-list-form {
+  display: flex;
+  padding: 10px 1.5rem;
+  gap: 8px;
+  border-bottom: 1px solid #f0eee9;
+  background: #ffffff;
+}
+
+.inline-create-list-form input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.inline-create-list-form button {
+  background-color: #1a2e40;
+  color: white;
+  border: none;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wishlist-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --------------------------------------------------------------------
+   5. SAVE-TO-WISHLIST PICKER MODAL (SaveWishlistModal.jsx)
+   -------------------------------------------------------------------- */
+.wishlist-picker-modal {
+  background: #ffffff;
+  margin: auto;
+  padding: 2rem;
+  border-radius: 6px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.modal-top h3 {
+  font-family: 'Georgia', serif;
+  font-size: 1.25rem;
+  color: #1a2e40;
+}
+
+.picker-subtitle {
+  font-size: 0.85rem;
+  color: #555555;
+  margin-bottom: 1rem;
+}
+
+.wishlist-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 1.2rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.wishlist-choice-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #fdfdfc;
+  border: 1px solid #e8e6e1;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1a2e40;
+  transition: all 0.15s;
+}
+
+.wishlist-choice-btn:hover {
+  background: #f0eee9;
+  border-color: #1a2e40;
+}
+
+.wishlist-choice-btn small {
+  color: #717171;
+  font-weight: normal;
+}
+
+.create-and-save-form {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid #f0eee9;
+  padding-top: 1rem;
+}
+
+.create-and-save-form input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.create-and-save-form button {
+  background-color: #1a2e40;
+  color: white;
+  border: none;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------
+   6. AUTH MODAL (AuthModal.jsx)
+   -------------------------------------------------------------------- */
+.auth-dialog {
+  background: #ffffff;
+  margin: auto;
+  padding: 2.5rem;
+  border-radius: 4px;
+  width: 380px;
+  max-width: 90vw;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1.5rem;
+}
+
+.dialog-header h3 {
+  font-family: 'Georgia', serif;
+  font-size: 1.4rem;
+  color: #1a2e40;
+}
+
+.input-field {
+  margin-bottom: 1rem;
+}
+
+.input-field label {
+  display: block;
+  font-size: 0.8rem;
+  color: #555555;
+  margin-bottom: 4px;
+}
+
+.input-field input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  outline: none;
+}
+
+.dialog-submit-btn {
+  width: 100%;
+  background-color: #1a2e40;
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.dialog-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+  color: #717171;
+}
+
+.link-action {
+  background: none;
+  border: none;
+  color: #1a2e40;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+/* --------------------------------------------------------------------
+   7. TOAST NOTIFICATIONS & EMPTY STATES
+   -------------------------------------------------------------------- */
+.toast-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1a2e40;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 2000;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 0;
+  color: #717171;
+}
+
+.clear-filter-btn {
+  margin-top: 12px;
+  background: none;
+  border: 1px solid #1a2e40;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* THE NILE / B&N 2-COLUMN WISHLIST LAYOUT */
+.wishlist-page-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+}
+
+.wishlist-view-card {
+  background: #fbf9f4;
+  width: 1100px;
+  max-width: 95vw;
+  height: 85vh;
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+/* SIDEBAR */
+.wishlist-sidebar {
+  width: 240px;
+  background-color: #ffffff;
+  border-right: 1px solid #eae7e0;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sidebar-heading {
+  font-size: 0.95rem;
+  color: #2b2b2b;
+  font-weight: 500;
+}
+.sidebar-heading.text-blue {
+  color: #0c4a6e;
+  font-weight: 700;
+}
+
+.wishlist-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+
+.wishlist-link-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #555555;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.wishlist-link-item.active .list-title {
+  color: #0284c7;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.create-wishlist-link {
+  background: none;
+  border: none;
+  color: #2b2b2b;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 0;
+  margin-top: 6px;
+}
+.create-wishlist-link:hover {
+  text-decoration: underline;
+}
+
+.sidebar-create-form {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-create-form input {
+  padding: 6px 8px;
+  border: 1px solid #c9c5be;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  outline: none;
+}
+.create-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-save-sm {
+  background: #1a2e40;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.btn-cancel-sm {
+  background: none;
+  border: 1px solid #c9c5be;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* MAIN CONTENT */
+.wishlist-main-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.wishlist-top-bar {
+  padding: 2rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid #eae7e0;
+}
+
+.wishlist-display-title {
+  font-family: 'Georgia', serif;
+  font-size: 1.8rem;
+  color: #1a2e40;
+  margin-bottom: 6px;
+}
+
+.wishlist-sub-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.action-link {
+  background: none;
+  border: none;
+  color: #475569;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.action-link.text-red {
+  color: #dc2626;
+}
+.action-link:hover {
+  color: #0f172a;
+}
+
+.top-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-add-all {
+  background-color: #0b44cc;
+  color: white;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-add-all:hover {
+  background-color: #08339c;
+}
+
+.btn-close-view {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #64748b;
+}
+
+/* GRID */
+.wishlist-books-container {
+  padding: 2rem 2.5rem;
+  flex: 1;
+}
+
+.wishlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.5rem;
+}
+
+.wishlist-book-card {
+  background: white;
+  border: 1px solid #eae7e0;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-cover-container {
+  height: 200px;
+  position: relative;
+  background: #e2e8f0;
+}
+.discount-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background-color: #f97316;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+  z-index: 2;
+}
+.cover-box {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  font-family: 'Georgia', serif;
+  font-weight: bold;
+}
+.cover-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card-details {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.book-name {
+  font-family: 'Georgia', serif;
+  font-size: 0.95rem;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+.book-author-line {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.book-price-line {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.card-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+.btn-card-cart {
+  background-color: #0284c7;
+  color: white;
+  border: none;
+  padding: 7px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-card-remove {
+  background: none;
+  border: 1px solid #cbd5e1;
+  padding: 5px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.inline-rename-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.inline-rename-form input {
+  padding: 4px 8px;
+  font-size: 1.1rem;
+  font-family: 'Georgia', serif;
+  border: 1px solid #0284c7;
+  border-radius: 3px;
+  outline: none;
+}
+/* TYPABLE CART QUANTITY BOX */
+.qty-input-box {
+  width: 46px;
+  height: 28px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1a2e40;
+  border: 1px solid #c9c5be;
+  border-radius: 4px;
+  background-color: #ffffff;
+  outline: none;
+}
+
+.qty-input-box:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+/* Remove default browser arrow spinners */
+.qty-input-box::-webkit-inner-spin-button,
+.qty-input-box::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

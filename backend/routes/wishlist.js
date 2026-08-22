@@ -154,8 +154,8 @@ router.delete('/remove_book',async(req,res)=>{
 //which means the effect should be passed on to/cascaded to its rows in the wishlist_items table 
 // from the table -> FOREIGN KEY (wishlist_id) REFERENCES wishlists(wishlist_id) ON DELETE CASCADE,
 
-router.delete('/remove_wishlist',async(req,res)=>{
-const{wishlist_id}=req.body;
+router.delete('/:wishlist_id',async(req,res)=>{
+const{wishlist_id}=req.params;
     try {
     //the default 'My Wishlist" cannot be deleted-either delete icon is absent/if there is an icon, deleting is forbidden
     //standard behaviour of many famous bookstores 
@@ -179,6 +179,47 @@ const{wishlist_id}=req.body;
     } catch (err) {
         console.error('Error deleting wishlist:', err.message);
         res.status(500).json({ error: 'Failed to delete wishlist' });
+    }
+});
+
+// PUT /wishlist/rename -> Rename a custom wishlist
+router.put('/rename', async (req, res) => {
+    const { wishlist_id, new_name, customer_id } = req.body;
+
+    if (!new_name || new_name.trim() === '') {
+        return res.status(400).json({ error: 'Wishlist name cannot be empty!' });
+    }
+    const cleanName = new_name.trim();
+
+    try {
+        const check = await pool.query('SELECT wishlist_name FROM wishlists WHERE wishlist_id = $1', [wishlist_id]);
+        if (check.rows.length === 0) {
+            return res.status(404).json({ error: 'Wishlist not found' });
+        }
+
+        // Prevent renaming the default 'My Wishlist'
+        if (check.rows[0].wishlist_name === 'My Wishlist') {
+            return res.status(400).json({ error: 'The default "My Wishlist" cannot be renamed.' });
+        }
+
+        // Check if name conflicts with another list
+        const dupCheck = await pool.query(
+            'SELECT wishlist_id FROM wishlists WHERE customer_id = $1 AND wishlist_name = $2 AND wishlist_id != $3',
+            [customer_id, cleanName, wishlist_id]
+        );
+        if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ error: `You already have a wishlist named "${cleanName}".` });
+        }
+
+        const updateRes = await pool.query(
+            'UPDATE wishlists SET wishlist_name = $1 WHERE wishlist_id = $2 RETURNING *',
+            [cleanName, wishlist_id]
+        );
+
+        res.json({ message: 'Wishlist renamed successfully!', wishlist: updateRes.rows[0] });
+    } catch (err) {
+        console.error('Error renaming wishlist:', err.message);
+        res.status(500).json({ error: 'Failed to rename wishlist' });
     }
 });
 

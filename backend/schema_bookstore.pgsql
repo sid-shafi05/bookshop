@@ -1,12 +1,5 @@
--- ====================================================================
--- CSE216 DATABASE SYSTEMS PROJECT: ONLINE BOOKSHOP SCHEMA
--- Target Database Engine: PostgreSQL
--- ====================================================================
 
--- --------------------------------------------------------------------
--- CLEANUP: Drop existing tables in reverse dependency order
--- --------------------------------------------------------------------
-DROP TABLE IF EXISTS returns CASCADE;
+/*DROP TABLE IF EXISTS returns CASCADE;
 DROP TABLE IF EXISTS deliveries CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS reviews CASCADE;
@@ -25,14 +18,10 @@ DROP TABLE IF EXISTS coupons CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS publishers CASCADE;
 DROP TABLE IF EXISTS authors CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS users CASCADE;*/
 
 
--- ====================================================================
--- PART 1: CORE & METADATA ENTITIES
--- ====================================================================
-
--- 1. USERS (Superclass for authentication & base credentials)
+--1.USERS (Superclass for authentication & base info)
 CREATE TABLE users (
     user_id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
@@ -49,7 +38,7 @@ CREATE TABLE users (
     CONSTRAINT users_role_check CHECK (role IN ('customer', 'admin'))
 );
 
--- 2. AUTHORS
+--2. AUTHORS
 CREATE TABLE authors (
     author_id SERIAL PRIMARY KEY,
     name VARCHAR(150) NOT NULL,
@@ -59,7 +48,7 @@ CREATE TABLE authors (
     photo_url VARCHAR(500) DEFAULT '/images/placeholder-author.jpg'
 );
 
--- 3. PUBLISHERS
+--3. PUBLISHERS
 CREATE TABLE publishers (
     publisher_id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
@@ -72,13 +61,13 @@ CREATE TABLE publishers (
     contact_info VARCHAR(150)
 );
 
--- 4. CATEGORIES (Genres)
+--4. CATEGORIES (Genres)
 CREATE TABLE categories (
     category_id SERIAL PRIMARY KEY,
     category_name VARCHAR(100) NOT NULL UNIQUE
 );
 
--- 5. COUPONS (Discounts & Promo Codes)
+--5. COUPONS (Discounts & Promo Codes)
 CREATE TABLE coupons (
     coupon_id SERIAL PRIMARY KEY,
     code VARCHAR(50) NOT NULL UNIQUE,
@@ -92,19 +81,18 @@ CREATE TABLE coupons (
     CONSTRAINT coupon_max_discount_check CHECK (max_discount IS NULL OR max_discount >= 0)
 );
 
--- 6. CUSTOMERS (Subclass of users)
+--6. CUSTOMERS (Subclass of users)
 CREATE TABLE customers (
     customer_id INTEGER PRIMARY KEY,
     FOREIGN KEY (customer_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
-
--- 7. ADMINS (Subclass of users)
+--7. ADMINS (Subclass of users)
 CREATE TABLE admins (
     admin_id INTEGER PRIMARY KEY,
     FOREIGN KEY (admin_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 8. BOOKS
+--8. BOOKS
 CREATE TABLE books (
     book_id SERIAL PRIMARY KEY,
     title VARCHAR(300) NOT NULL,
@@ -124,11 +112,8 @@ CREATE TABLE books (
 );
 
 
--- ====================================================================
--- PART 2: JUNCTION TABLES & TRANSACTIONAL ENTITIES
--- ====================================================================
 
--- 9. BOOK_AUTHORS (Many-to-Many: Books <-> Authors)
+--9. BOOK_AUTHORS (Many-to-Many)
 CREATE TABLE book_authors (
     book_id INTEGER NOT NULL,
     author_id INTEGER NOT NULL,
@@ -137,7 +122,7 @@ CREATE TABLE book_authors (
     FOREIGN KEY (author_id) REFERENCES authors(author_id) ON DELETE CASCADE
 );
 
--- 10. BOOK_CATEGORIES (Many-to-Many: Books <-> Categories)
+--10. BOOK_CATEGORIES (Many-to-Many)
 CREATE TABLE book_categories (
     book_id INTEGER NOT NULL,
     category_id INTEGER NOT NULL,
@@ -146,7 +131,7 @@ CREATE TABLE book_categories (
     FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE CASCADE
 );
 
--- 11. CARTS (1-to-1 with Customers)
+--11. CARTS (1-to-1 with Customers)
 CREATE TABLE carts (
     cart_id SERIAL PRIMARY KEY,
     customer_id INTEGER NOT NULL UNIQUE,
@@ -155,7 +140,7 @@ CREATE TABLE carts (
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
 );
 
--- 12. WISHLISTS (1-to-Many with Customers: Allows multiple named wishlists)
+--12. WISHLISTS (1-to-Many with Customers: Allows multiple named wishlists)
 CREATE TABLE wishlists (
     wishlist_id SERIAL PRIMARY KEY,
     customer_id INTEGER NOT NULL,
@@ -165,7 +150,7 @@ CREATE TABLE wishlists (
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
 );
 
--- 13. ORDERS
+--13. ORDERS
 CREATE TABLE orders (
     order_id SERIAL PRIMARY KEY,
     customer_id INTEGER NOT NULL,
@@ -187,7 +172,7 @@ CREATE TABLE orders (
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE SET NULL
 );
 
--- 14. CART_ITEMS (Many-to-Many: Carts <-> Books)
+--14. CART_ITEMS (Many-to-Many: Carts <-> Books)
 CREATE TABLE cart_items (
     cart_id INTEGER NOT NULL,
     book_id INTEGER NOT NULL,
@@ -198,7 +183,7 @@ CREATE TABLE cart_items (
     FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
 );
 
--- 15. WISHLIST_ITEMS (Many-to-Many: Wishlists <-> Books)
+--15. WISHLIST_ITEMS (Many-to-Many: Wishlists <-> Books)
 CREATE TABLE wishlist_items (
     wishlist_id INTEGER NOT NULL,
     book_id INTEGER NOT NULL,
@@ -208,7 +193,7 @@ CREATE TABLE wishlist_items (
     FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
 );
 
--- 16. ORDER_ITEMS (Many-to-Many: Orders <-> Books with price protection)
+---16. ORDER_ITEMS (Many-to-Many: Orders <-> Books)
 CREATE TABLE order_items (
     order_item_id SERIAL PRIMARY KEY,
     order_id INTEGER NOT NULL,
@@ -222,7 +207,7 @@ CREATE TABLE order_items (
     FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE RESTRICT
 );
 
--- 17. REVIEWS (1 review per customer per book)
+--17. REVIEWS (1 review per customer per book)
 CREATE TABLE reviews (
     review_id SERIAL PRIMARY KEY,
     customer_id INTEGER NOT NULL,
@@ -236,7 +221,7 @@ CREATE TABLE reviews (
     FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
 );
 
--- 18. NOTIFICATIONS (Personal user alerts)
+--18. NOTIFICATIONS 
 CREATE TABLE notifications (
     notification_id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -247,7 +232,7 @@ CREATE TABLE notifications (
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 19. DELIVERIES (1-to-1 with Orders)
+--19. DELIVERIES (1-to-1 with Orders)
 CREATE TABLE deliveries (
     delivery_id SERIAL PRIMARY KEY,
     order_id INTEGER NOT NULL UNIQUE,
@@ -266,7 +251,7 @@ CREATE TABLE deliveries (
     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
 );
 
--- 20. RETURNS (Item-level returns for damaged/defective books)
+20. RETURNS (Item-level returns for damaged/defective books)
 CREATE TABLE returns (
     return_id SERIAL PRIMARY KEY,
     order_item_id INTEGER NOT NULL,
@@ -282,9 +267,7 @@ CREATE TABLE returns (
 );
 
 
--- ====================================================================
--- PART 3: INDEXES (Performance Optimization)
--- ====================================================================
+ --INDEXES (Performance Optimization)
 CREATE INDEX idx_books_title ON books(title);
 CREATE INDEX idx_books_publisher ON books(publisher_id);
 CREATE INDEX idx_orders_customer ON orders(customer_id);

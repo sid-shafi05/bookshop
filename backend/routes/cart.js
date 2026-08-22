@@ -32,8 +32,9 @@ router.get('/:customer_id', async (req, res) => {
         join book_authors ba on ba.book_id=b.book_id 
         join authors a on a.author_id=ba.author_id
         where c.customer_id=$1
-        GROUP BY b.book_id, b.title, b.cover_url, ci.quantity, b.price;
-        ; `
+        GROUP BY b.book_id, b.title, b.cover_url, ci.quantity, b.price
+        order by b.book_id ASC;
+         `;
 
         const result = await pool.query(query, [customer_id]);
 
