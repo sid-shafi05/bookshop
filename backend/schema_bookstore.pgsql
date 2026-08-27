@@ -251,7 +251,7 @@ CREATE TABLE deliveries (
     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
 );
 
-20. RETURNS (Item-level returns for damaged/defective books)
+--20. RETURNS (Item-level returns for damaged/defective books)
 CREATE TABLE returns (
     return_id SERIAL PRIMARY KEY,
     order_item_id INTEGER NOT NULL,

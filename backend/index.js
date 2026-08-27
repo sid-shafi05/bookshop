@@ -11,7 +11,7 @@ app.use('/auth', require('./routes/auth'));
 app.use('/cart', require('./routes/cart'));
 app.use('/books', require('./routes/books'));
 app.use('/wishlist', require('./routes/wishlist'));
-
+app.use('/admin', require('./routes/admin'));
 
 
 const PORT = 3000;
