@@ -3,20 +3,24 @@ const router= express.Router();
 const pool = require('../db');
 
 const { verifyToken, requireAdmin } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
-// Add a new book (admin only)
-router.post('/books', verifyToken, requireAdmin, async (req, res) => {
+// Add a new book (admin only) — now accepts an optional cover_image file
+router.post('/books', verifyToken, requireAdmin, upload.single('cover_image'), async (req, res) => {
     const { title, isbn, price, stock_quantity, publication_year } = req.body;
+
+    // req.file only exists if a file was actually uploaded (multer put it there)
+    const cover_url = req.file ? `/images/books/${req.file.filename}` : null;
 
     try {
         const result = await pool.query(
-            'INSERT INTO books (title, isbn, price, stock_quantity, publication_year) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [title, isbn, price, stock_quantity, publication_year]
+            'INSERT INTO books (title, isbn, price, stock_quantity, publication_year, cover_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [title, isbn, price, stock_quantity, publication_year, cover_url]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error('Error adding book:', err);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
 });
 
@@ -30,14 +34,20 @@ router.get('/books', verifyToken, requireAdmin, async (req, res) => {
     }
 });
 
-router.put('/books/:id', verifyToken, requireAdmin, async (req, res) => {
+// Update a book — now accepts an optional new cover_image file
+router.put('/books/:id', verifyToken, requireAdmin, upload.single('cover_image'), async (req, res) => {
     const { id } = req.params;
-    const { title, isbn, price, stock_quantity, publication_year } = req.body;
+    const { title, isbn, price, stock_quantity, publication_year, existing_cover_url } = req.body;
+
+    // New file uploaded -> use it. Otherwise keep the cover the book already
+    // had (sent back by the frontend as existing_cover_url), so editing the
+    // price doesn't accidentally wipe out the cover image.
+    const cover_url = req.file ? `/images/books/${req.file.filename}` : (existing_cover_url || null);
 
     try {
         const result = await pool.query(
-            'UPDATE books SET title = $1, isbn = $2, price = $3, stock_quantity = $4, publication_year = $5 WHERE book_id = $6 RETURNING *',
-            [title, isbn, price, stock_quantity, publication_year, id]
+            'UPDATE books SET title = $1, isbn = $2, price = $3, stock_quantity = $4, publication_year = $5, cover_url = $6 WHERE book_id = $7 RETURNING *',
+            [title, isbn, price, stock_quantity, publication_year, cover_url, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Book not found' });
@@ -45,7 +55,7 @@ router.put('/books/:id', verifyToken, requireAdmin, async (req, res) => {
         res.status(200).json(result.rows[0]);
     } catch (err) {
         console.error('Error updating book:', err);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
 });
 
@@ -53,7 +63,7 @@ router.delete('/books/:id', verifyToken, requireAdmin, async (req, res) => {
     const { id } = req.params;
 
     try {
-        const result = await pool.query('DELETE FROM books WHERE ibook_id = $1 RETURNING *', [id]);
+        const result = await pool.query('DELETE FROM books WHERE book_id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Book not found' });
         }

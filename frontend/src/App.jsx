@@ -7,6 +7,7 @@ import CartDrawer from './components/CartDrawer';
 import WishlistDrawer from './components/WishlistDrawer';
 import SaveWishlistModal from './components/SaveWishlistModal';
 import AuthModal from './components/AuthModal';
+import AdminDashboard from './components/AdminDashboard';
 import './App.css';
 
 const AUTH_USER_KEY = 'bookstore_user';
@@ -36,6 +37,9 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('featured');
+
+  // NEW: which top-level view is showing — 'shop' or 'admin'
+  const [currentView, setCurrentView] = useState('shop');
 
   const [user, setUser] = useState(() => {
     // Persist auth across restarts, but drop stale sessions when token is expired.
@@ -163,6 +167,7 @@ export default function App() {
     setCurrentWishlistBooks([]);
     setShowCart(false);
     setShowWishlist(false);
+    setCurrentView('shop'); // NEW: kick back to shop view on sign out
     showToast('Signed out');
   };
   const refreshWishlists = async (uid) => {
@@ -285,35 +290,40 @@ const handleAuthSubmit = async (e) => {
         onOpenWishlist={() => user ? setShowWishlist(true) : setShowAuthModal(true)}
         onOpenCart={() => user ? setShowCart(true) : setShowAuthModal(true)}
         onOpenAuth={() => { setIsLoginMode(true); setShowAuthModal(true); }}
+        onOpenAdmin={() => setCurrentView('admin')}
         onSignOut={handleSignOut}
       />
 
       {toastMessage && <div className="toast-bar">{toastMessage}</div>}
 
-      <main className="catalog-wrapper">
-        <div className="catalog-toolbar">
-          <div>
-            <h2 className="section-heading">{selectedCategory === 'All' ? 'Books & Collections' : selectedCategory}</h2>
-            <span className="results-count">{filteredBooks.length} items available</span>
+      {currentView === 'admin' ? (
+        <AdminDashboard onClose={() => setCurrentView('shop')} />
+      ) : (
+        <main className="catalog-wrapper">
+          <div className="catalog-toolbar">
+            <div>
+              <h2 className="section-heading">{selectedCategory === 'All' ? 'Books & Collections' : selectedCategory}</h2>
+              <span className="results-count">{filteredBooks.length} items available</span>
+            </div>
+            <div className="sort-box">
+              <label>Sort:</label>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <option value="featured">Featured / Newest</option>
+                <option value="price-low">Price: Low to High</option>
+                <option value="price-high">Price: High to Low</option>
+              </select>
+            </div>
           </div>
-          <div className="sort-box">
-            <label>Sort:</label>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="featured">Featured / Newest</option>
-              <option value="price-low">Price: Low to High</option>
-              <option value="price-high">Price: High to Low</option>
-            </select>
-          </div>
-        </div>
 
-        {loading ? <div className="empty-state">Loading books from database...</div> : (
-          <div className="book-grid">
-            {filteredBooks.map(b => (
-              <BookCard key={b.book_id} book={b} onAddToCart={handleAddToCart} onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)} />
-            ))}
-          </div>
-        )}
-      </main>
+          {loading ? <div className="empty-state">Loading books from database...</div> : (
+            <div className="book-grid">
+              {filteredBooks.map(b => (
+                <BookCard key={b.book_id} book={b} onAddToCart={handleAddToCart} onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)} />
+              ))}
+            </div>
+          )}
+        </main>
+      )}
 
       <CartDrawer 
         isOpen={showCart} onClose={() => setShowCart(false)} cart={cart}

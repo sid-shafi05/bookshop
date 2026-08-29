@@ -333,6 +333,12 @@ body {
   text-align: center;
   background: linear-gradient(135deg, #eaddc7 0%, #c7b299 100%);
 }
+.book-cover-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 .art-icon {
   font-size: 2rem;

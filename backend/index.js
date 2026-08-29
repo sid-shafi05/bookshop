@@ -12,7 +12,8 @@ app.use('/cart', require('./routes/cart'));
 app.use('/books', require('./routes/books'));
 app.use('/wishlist', require('./routes/wishlist'));
 app.use('/admin', require('./routes/admin'));
-
+const path = require('path');
+app.use('/images/books', express.static(path.join(__dirname, 'uploads', 'books')));
 
 const PORT = 3000;
 app.listen(PORT, () => {

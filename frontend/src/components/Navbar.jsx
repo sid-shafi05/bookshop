@@ -22,6 +22,7 @@ export default function Navbar({
   onOpenWishlist,
   onOpenCart,
   onOpenAuth,
+  onOpenAdmin,
   onSignOut
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -73,6 +74,12 @@ export default function Navbar({
                   <hr />
                   <button className="menu-item" onClick={onOpenWishlist}>My Wishlists</button>
                   <button className="menu-item" onClick={onOpenCart}>My Shopping Cart</button>
+                  {user.role === 'admin' && (
+                    <>
+                      <hr />
+                      <button className="menu-item" onClick={onOpenAdmin}>Admin Dashboard</button>
+                    </>
+                  )}
                   <hr />
                   <button className="menu-item signout-btn" onClick={onSignOut}>Sign Out</button>
                 </div>

@@ -3,13 +3,25 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
   const genreText = Array.isArray(book.categories) ? book.categories.join(' • ') : (book.category_name || 'Book');
   const authorText = Array.isArray(book.authors) ? book.authors.join(', ') : (book.author_name || 'Various Authors');
 
+  // Only show a real photo if cover_url is set and isn't the generic
+  // schema default placeholder path — otherwise fall back to the art box.
+  const hasRealCover = book.cover_url && book.cover_url !== '/images/placeholder-book.jpg';
+
   return (
     <div className="book-card">
       <div className="cover-wrapper">
-        <div className="book-cover-art">
-          <span className="art-icon">📖</span>
-          <span className="art-title">{book.title}</span>
-        </div>
+        {hasRealCover ? (
+          <img
+            className="book-cover-photo"
+            src={`http://localhost:3000${book.cover_url}`}
+            alt={book.title}
+          />
+        ) : (
+          <div className="book-cover-art">
+            <span className="art-icon">📖</span>
+            <span className="art-title">{book.title}</span>
+          </div>
+        )}
         <button 
           className="wishlist-float-btn" 
           title="Save to Wishlist"
