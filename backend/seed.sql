@@ -92,3 +92,16 @@ SELECT setval('authors_author_id_seq', (SELECT COALESCE(MAX(author_id), 1) FROM 
 SELECT setval('publishers_publisher_id_seq', (SELECT COALESCE(MAX(publisher_id), 1) FROM publishers));
 SELECT setval('books_book_id_seq', (SELECT COALESCE(MAX(book_id), 1) FROM books));
 SELECT setval('coupons_coupon_id_seq', (SELECT COALESCE(MAX(coupon_id), 1) FROM coupons));
+
+
+
+-- Seed data for the deliverymen table
+-- Usage: psql -U your_db_user -d your_database_name -f seed_deliverymen.sql
+
+INSERT INTO deliverymen (name, phone, vehicle_type, is_active) VALUES
+  ('Rafiqul Islam', '01711-223344', 'Motorbike', TRUE),
+  ('Habibur Rahman', '01822-334455', 'Bicycle', TRUE),
+  ('Shamim Hossain', '01933-445566', 'Motorbike', TRUE),
+  ('Delwar Hossain', '01644-556677', 'Van', TRUE),
+  ('Nasir Uddin', '01555-667788', 'Motorbike', FALSE),
+  ('Kamal Ahmed', '01766-778899', 'Bicycle', TRUE);

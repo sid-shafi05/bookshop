@@ -2,7 +2,7 @@
 const API_URL = 'http://localhost:3000';
 
 async function request(path, options = {}) {
-const token = localStorage.getItem('bookstore_token');
+const token = sessionStorage.getItem('bookstore_token');
 
 const res = await fetch(`${API_URL}${path}`, {
 headers: {
@@ -26,7 +26,7 @@ return data;
 // Content-Type here — the browser builds its own multipart boundary
 // based on the FormData contents, and setting it manually breaks that.
 async function requestFormData(path, formData, method = 'POST') {
-const token = localStorage.getItem('bookstore_token');
+const token = sessionStorage.getItem('bookstore_token');
 
 const res = await fetch(`${API_URL}${path}`, {
 method,
@@ -55,6 +55,16 @@ deleteBook: (bookId) => request(`/admin/books/${bookId}`, { method: 'DELETE' }),
 getAdminUsers: () => request('/admin/users'),
 getAdminOrders: () => request('/admin/orders'),
 updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
+// Delivery assignment (admin)
+getDeliverymen: () => request('/admin/deliverymen'),
+createDeliveryman: (data) => request('/admin/deliverymen', { method: 'POST', body: JSON.stringify(data) }),
+updateDeliveryman: (id, data) => request(`/admin/deliverymen/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+deleteDeliveryman: (id) => request(`/admin/deliverymen/${id}`, { method: 'DELETE' }),
+shipOrder: (orderId, { deliveryman_id, shipping_method, tracking_number }) =>
+  request(`/admin/orders/${orderId}/ship`, { method: 'POST', body: JSON.stringify({ deliveryman_id, shipping_method, tracking_number }) }),
+updateDeliveryStatus: (deliveryId, status) =>
+  request(`/admin/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+
 // Books & Catalog
 getBooks: () => request('/books'),
 // Auth
@@ -84,4 +94,18 @@ removeFromWishlist: ({ wishlist_id, book_id }) =>
 request('/wishlist/remove_book', { method: 'DELETE', body: JSON.stringify({ wishlist_id, book_id }) }),
 deleteWishlist: (wishlist_id) =>
 request(`/wishlist/${wishlist_id}`, { method: 'DELETE' }),
+
+// Orders (customer)
+checkout: (payload) => request('/orders/checkout', { method: 'POST', body: JSON.stringify(payload) }),
+payOrder: (orderId) => request(`/orders/${orderId}/pay`, { method: 'POST' }),
+getCustomerOrders: (customerId) => request(`/orders/customer/${customerId}`),
+getOrderDetail: (orderId) => request(`/orders/${orderId}`),
+cancelOrder: (orderId) => request(`/orders/${orderId}/cancel`, { method: 'PUT' }),
+receiveOrder: (orderId) => request(`/orders/${orderId}/receive`, { method: 'PUT' }),
+
+// Reviews
+getBookReviews: (bookId) => request(`/reviews/book/${bookId}`),
+checkReviewEligibility: (customerId, bookId) => request(`/reviews/eligibility/${customerId}/${bookId}`),
+submitReview: ({ customer_id, book_id, rating, comment }) =>
+  request('/reviews', { method: 'POST', body: JSON.stringify({ customer_id, book_id, rating, comment }) }),
 };

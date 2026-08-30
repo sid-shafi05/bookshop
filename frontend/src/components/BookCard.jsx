@@ -1,4 +1,33 @@
 // src/components/BookCard.jsx
+
+function StarRating({ rating, count }) {
+  const rounded = Math.round(Number(rating) * 2) / 2; // nearest half-star
+  const full = Math.floor(rounded);
+  const half = rounded - full === 0.5;
+  const empty = 5 - full - (half ? 1 : 0);
+
+  if (!count || Number(count) === 0) {
+    return (
+      <div className="rating-container">
+        <span className="rating-num no-reviews">No reviews yet</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rating-container">
+      <span className="rating-stars">
+        {'★'.repeat(full)}
+        {half ? '⯨' : ''}
+        {'☆'.repeat(Math.max(empty, 0))}
+      </span>
+      <span className="rating-num">
+        {Number(rating).toFixed(1)} ({count})
+      </span>
+    </div>
+  );
+}
+
 export default function BookCard({ book, onAddToCart, onHeartClick }) {
   const genreText = Array.isArray(book.categories) ? book.categories.join(' • ') : (book.category_name || 'Book');
   const authorText = Array.isArray(book.authors) ? book.authors.join(', ') : (book.author_name || 'Various Authors');
@@ -22,8 +51,8 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
             <span className="art-title">{book.title}</span>
           </div>
         )}
-        <button 
-          className="wishlist-float-btn" 
+        <button
+          className="wishlist-float-btn"
           title="Save to Wishlist"
           onClick={() => onHeartClick(book)}
         >
@@ -36,10 +65,7 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
         <h3 className="title-text" title={book.title}>{book.title}</h3>
         <p className="author-text">by {authorText}</p>
 
-        <div className="rating-container">
-          <span className="rating-stars">★★★★★</span>
-          <span className="rating-num">5.0</span>
-        </div>
+        <StarRating rating={book.average_rating} count={book.review_count} />
 
         <div className="price-row">
           <span className="price-tag">Tk {Number(book.price).toFixed(2)}</span>
@@ -48,7 +74,7 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
           </span>
         </div>
 
-        <button 
+        <button
           className="cart-action-btn"
           disabled={book.stock_quantity <= 0}
           onClick={() => onAddToCart(book.book_id)}

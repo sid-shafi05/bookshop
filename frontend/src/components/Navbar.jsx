@@ -23,6 +23,7 @@ export default function Navbar({
   onOpenCart,
   onOpenAuth,
   onOpenAdmin,
+  onOpenOrders,
   onSignOut
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -72,6 +73,7 @@ export default function Navbar({
                     <small className="role-tag">{user.role?.toUpperCase()}</small>
                   </div>
                   <hr />
+                  <button className="menu-item" onClick={onOpenOrders}>My Orders</button>
                   <button className="menu-item" onClick={onOpenWishlist}>My Wishlists</button>
                   <button className="menu-item" onClick={onOpenCart}>My Shopping Cart</button>
                   {user.role === 'admin' && (

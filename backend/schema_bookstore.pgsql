@@ -278,3 +278,39 @@ CREATE INDEX idx_reviews_book ON reviews(book_id);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_book_authors_author ON book_authors(author_id);
 CREATE INDEX idx_book_categories_category ON book_categories(category_id);
+
+
+
+ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) DEFAULT 'unpaid';
+
+CREATE TABLE deliverymen (
+  deliveryman_id  SERIAL PRIMARY KEY,
+  name            VARCHAR(100) NOT NULL,
+  phone           VARCHAR(30)  NOT NULL,
+  vehicle_type    VARCHAR(50),
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE deliveries (
+  delivery_id           SERIAL PRIMARY KEY,
+  order_id              INTEGER NOT NULL REFERENCES orders(order_id),
+  deliveryman_id        INTEGER REFERENCES deliverymen(deliveryman_id),
+  rider_name            VARCHAR(100),
+  rider_phone           VARCHAR(30),
+  shipping_method       VARCHAR(50),
+  tracking_number       VARCHAR(50),
+  status                VARCHAR(20) NOT NULL DEFAULT 'preparing',
+  delivery_house_no     VARCHAR(50),
+  delivery_street       VARCHAR(150),
+  delivery_city         VARCHAR(100),
+  delivery_postal_code  VARCHAR(20),
+  delivery_country      VARCHAR(100),
+  delivery_date         TIMESTAMP,
+  created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (order_id)
+);
+
+
+ALTER TABLE deliveries
+  ADD COLUMN deliveryman_id INTEGER REFERENCES deliverymen(deliveryman_id);

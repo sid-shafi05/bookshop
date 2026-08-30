@@ -11,6 +11,8 @@ app.use('/auth', require('./routes/auth'));
 app.use('/cart', require('./routes/cart'));
 app.use('/books', require('./routes/books'));
 app.use('/wishlist', require('./routes/wishlist'));
+app.use('/orders', require('./routes/orders'));
+app.use('/reviews', require('./routes/reviews'));
 app.use('/admin', require('./routes/admin'));
 const path = require('path');
 app.use('/images/books', express.static(path.join(__dirname, 'uploads', 'books')));

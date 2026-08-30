@@ -3,7 +3,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 
-// Master reusable query for fetching book details with publisher, authors, and categories
+// Master reusable query for fetching book details with publisher, authors,
+// categories, and a live-computed average rating from the reviews table.
 const BASE_SELECT = `
   SELECT
     b.book_id,
@@ -25,7 +26,15 @@ const BASE_SELECT = `
         JOIN categories c ON c.category_id = bc.category_id
         WHERE bc.book_id = b.book_id),
       '{}'
-    ) AS categories
+    ) AS categories,
+    COALESCE(
+      (SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r WHERE r.book_id = b.book_id),
+      0
+    ) AS average_rating,
+    COALESCE(
+      (SELECT COUNT(*) FROM reviews r WHERE r.book_id = b.book_id),
+      0
+    )::int AS review_count
   FROM books b
   LEFT JOIN publishers p ON p.publisher_id = b.publisher_id
 `;

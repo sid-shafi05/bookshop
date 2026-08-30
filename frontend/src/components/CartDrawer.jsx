@@ -1,5 +1,5 @@
 // src/components/CartDrawer.jsx
-export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemoveItem }) {
+export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemoveItem, onCheckout }) {
   if (!isOpen) return null;
 
   return (
@@ -76,7 +76,7 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
               <span>Subtotal</span>
               <strong>Tk {cart.cart_subtotal}</strong>
             </div>
-            <button className="primary-checkout-btn" onClick={() => alert('Proceeding to checkout...')}>
+            <button className="primary-checkout-btn" onClick={onCheckout}>
               Checkout
             </button>
           </div>
