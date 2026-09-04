@@ -1,5 +1,6 @@
 const express = require('express');
 const router= express.Router();
+const bcrypt = require('bcrypt');
 const pool = require('../db');
 
 const { verifyToken, requireAdmin } = require('../middleware/auth');
@@ -14,26 +15,62 @@ router.use(verifyToken, requireAdmin);
 
 // Add a new book (admin only) — now accepts an optional cover_image file
 router.post('/books', upload.single('cover_image'), async (req, res) => {
-    const { title, isbn, price, stock_quantity, publication_year } = req.body;
+  const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+  const isbn = typeof req.body.isbn === 'string' ? req.body.isbn.trim() || null : null;
+  const { price, stock_quantity, publication_year, category_id } = req.body;
+  if (!title || !Number.isFinite(Number(price)) || !Number.isInteger(Number(stock_quantity)) || Number(stock_quantity) < 0) {
+    return res.status(400).json({ error: 'Title, valid price, and non-negative stock quantity are required' });
+  }
+  if (publication_year && (!Number.isInteger(Number(publication_year)) || Number(publication_year) < 1000 || Number(publication_year) > 2100)) {
+    return res.status(400).json({ error: 'Publication year must be between 1000 and 2100' });
+  }
 
     // req.file only exists if a file was actually uploaded (multer put it there)
     const cover_url = req.file ? `/images/books/${req.file.filename}` : null;
 
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
+      await client.query('BEGIN');
+      const result = await client.query(
             'INSERT INTO books (title, isbn, price, stock_quantity, publication_year, cover_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [title, isbn, price, stock_quantity, publication_year, cover_url]
+            [title, isbn, Number(price), Number(stock_quantity), publication_year || null, cover_url]
         );
-        res.status(201).json(result.rows[0]);
+      const book = result.rows[0];
+      if (category_id) {
+        await client.query(
+          'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2)',
+          [book.book_id, category_id]
+        );
+      }
+      await client.query('COMMIT');
+      res.status(201).json(book);
     } catch (err) {
+      await client.query('ROLLBACK');
+      if (err.code === '23505') {
+        res.status(409).json({ error: 'A book with this ISBN already exists' });
+        return;
+      }
         console.error('Error adding book:', err);
         res.status(500).json({ error: err.message || 'Internal Server Error' });
+    } finally {
+      client.release();
     }
 });
 
 router.get('/books', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM books');
+        const result = await pool.query(`
+            SELECT b.*,
+              COALESCE(
+                (SELECT array_agg(c.category_name ORDER BY c.category_name)
+                 FROM book_categories bc
+                 JOIN categories c ON c.category_id = bc.category_id
+                 WHERE bc.book_id = b.book_id),
+                '{}'
+              ) AS categories
+            FROM books b
+            ORDER BY b.book_id ASC
+        `);
         res.status(200).json(result.rows);
     } catch (err) {
         console.error('Error fetching books:', err);
@@ -44,7 +81,7 @@ router.get('/books', async (req, res) => {
 // Update a book — now accepts an optional new cover_image file
 router.put('/books/:id', upload.single('cover_image'), async (req, res) => {
     const { id } = req.params;
-    const { title, isbn, price, stock_quantity, publication_year, existing_cover_url } = req.body;
+    const { title, isbn, price, stock_quantity, publication_year, existing_cover_url, category_id } = req.body;
 
     const cover_url = req.file ? `/images/books/${req.file.filename}` : (existing_cover_url || null);
 
@@ -56,11 +93,30 @@ router.put('/books/:id', upload.single('cover_image'), async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Book not found' });
         }
+        await pool.query('DELETE FROM book_categories WHERE book_id = $1', [id]);
+        if (category_id) {
+          await pool.query(
+            'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2)',
+            [id, category_id]
+          );
+        }
         res.status(200).json(result.rows[0]);
     } catch (err) {
         console.error('Error updating book:', err);
         res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
+});
+
+router.get('/categories', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT category_id, category_name FROM categories ORDER BY category_name ASC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching admin categories:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 router.delete('/books/:id', async (req, res) => {
@@ -81,6 +137,50 @@ router.delete('/books/:id', async (req, res) => {
 // ====================================================================
 // USERS (read-only)
 // ====================================================================
+
+// Create another admin. Every existing admin is allowed to use this endpoint.
+router.post('/admins', async (req, res) => {
+  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Username, email, and password are required' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) {
+    return res.status(400).json({ error: 'Please provide a valid email address' });
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.trim())) {
+    return res.status(400).json({ error: 'Please provide a valid email address.' });
+  }
+    if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userResult = await client.query(
+      `INSERT INTO users (username, email, password_hash, role)
+       VALUES ($1, $2, $3, 'admin')
+       RETURNING user_id, username, email, role, created_at`,
+      [username.trim(), email.trim().toLowerCase(), passwordHash]
+    );
+    const admin = userResult.rows[0];
+    await client.query('INSERT INTO admins (admin_id) VALUES ($1)', [admin.user_id]);
+    await client.query('COMMIT');
+    res.status(201).json(admin);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+    console.error('Error creating admin:', err.message);
+    res.status(500).json({ error: 'Failed to create admin' });
+  } finally {
+    client.release();
+  }
+});
 
 router.get('/users', async (req, res) => {
   try {
@@ -115,6 +215,35 @@ router.get('/orders', async (req, res) => {
   } catch (err) {
     console.error('Error fetching orders:', err);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/order-details/:id', async (req, res) => {
+  try {
+    const orderResult = await pool.query(
+      `SELECT o.*, u.username, u.email
+       FROM orders o JOIN users u ON u.user_id = o.customer_id
+       WHERE o.order_id = $1`,
+      [req.params.id]
+    );
+    if (orderResult.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+
+    const itemsResult = await pool.query(
+      `SELECT oi.order_item_id, oi.book_id, oi.quantity, oi.unit_price, b.title, b.cover_url
+       FROM order_items oi JOIN books b ON b.book_id = oi.book_id
+       WHERE oi.order_id = $1 ORDER BY oi.order_item_id ASC`,
+      [req.params.id]
+    );
+    const deliveryResult = await pool.query(
+      `SELECT d.*, dm.name AS deliveryman_name, dm.phone AS deliveryman_phone
+       FROM deliveries d LEFT JOIN deliverymen dm ON dm.deliveryman_id = d.deliveryman_id
+       WHERE d.order_id = $1`,
+      [req.params.id]
+    );
+    res.json({ order: orderResult.rows[0], items: itemsResult.rows, delivery: deliveryResult.rows[0] || null });
+  } catch (err) {
+    console.error('Error fetching admin order detail:', err.message);
+    res.status(500).json({ error: 'Failed to fetch order details' });
   }
 });
 
@@ -164,7 +293,7 @@ router.post('/orders/:id/ship', async (req, res) => {
     const orderRes = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
     const order = orderRes.rows[0];
     if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Order not found' }); }
-    if (order.payment_status !== 'paid') {
+    if (order.payment_status !== 'paid' && order.payment_method !== 'cash_on_delivery') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This order has not been paid for yet' });
     }
@@ -254,7 +383,15 @@ router.put('/deliveries/:delivery_id/status', async (req, res) => {
     let order = null;
     if (isDelivered) {
       const updOrder = await client.query(
-        `UPDATE orders SET status = 'delivered', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *`,
+        `UPDATE orders
+         SET status = 'delivered',
+             payment_status = CASE
+               WHEN payment_method = 'cash_on_delivery' THEN 'paid'
+               ELSE payment_status
+             END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE order_id = $1
+         RETURNING *`,
         [delivery.order_id]
       );
       order = updOrder.rows[0];

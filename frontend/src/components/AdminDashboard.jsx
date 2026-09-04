@@ -5,21 +5,41 @@ import './AdminDashboard.css';
 
 const EMPTY_FORM = {
   title: '', isbn: '', price: '', stock_quantity: '', publication_year: '',
+  category_id: '',
   cover_url: '',    // existing cover on the server, when editing a book that already has one
   cover_file: null, // newly picked File object, if any
   cover_preview: '', // local blob URL for whatever is currently selected/existing
 };
-const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'];
-const DELIVERY_STATUSES = ['preparing', 'picked_up', 'in_transit', 'out_for_delivery', 'failed'];
+const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'cancelled', 'returned'];
+const DELIVERY_STATUSES = ['preparing', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed'];
+const DEFAULT_CATEGORIES = [
+  'Fiction & Literature', 'Self-Development', 'Computer Science & Tech',
+  'Sci-Fi & Fantasy', 'Academic & Education', 'Classics'
+];
 
-export default function AdminDashboard({ onClose }) {
+function formatPaymentMethod(method) {
+  const labels = {
+    cash_on_delivery: 'Cash on Delivery',
+    mock_online: 'Online Payment (Demo)'
+  };
+  return labels[method] || (method ? method.replace(/_/g, ' ') : 'Not specified');
+}
+
+export default function AdminDashboard({ onClose, user }) {
   const [activeTab, setActiveTab] = useState('books'); // 'books' | 'orders' | 'users' | 'deliverymen'
 
   return (
     <main className="admin-wrapper">
       <div className="admin-header-row">
         <h2>Admin Dashboard</h2>
-        <button className="admin-back-btn" onClick={onClose}>← Back to Shop</button>
+        <div className="admin-profile-actions">
+          <div className="admin-profile">
+            <strong>{user?.username}</strong>
+            <span>{user?.email}</span>
+            <small>ADMIN</small>
+          </div>
+          <button className="admin-back-btn" onClick={onClose}>Sign Out</button>
+        </div>
       </div>
 
       <div className="admin-tabs">
@@ -52,6 +72,9 @@ function TabButton({ label, active, onClick }) {
    ========================================================================== */
 function BooksTab() {
   const [books, setBooks] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -69,13 +92,16 @@ function BooksTab() {
       setError('');
     } catch (err) {
       console.error('Failed to load admin books:', err);
-      setError('Failed to load books.');
+      setError(err.message || 'Failed to load books.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadBooks(); }, []);
+  useEffect(() => {
+    loadBooks();
+    api.getAdminCategories().then((data) => setCategoryOptions(data.length ? data : DEFAULT_CATEGORIES.map((category_name, category_id) => ({ category_id: category_id + 1, category_name })))).catch(() => setCategoryOptions(DEFAULT_CATEGORIES.map((category_name, category_id) => ({ category_id: category_id + 1, category_name }))));
+  }, []);
 
   const buildFormData = (form) => {
     const fd = new FormData();
@@ -84,6 +110,7 @@ function BooksTab() {
     fd.append('price', Number(form.price));
     fd.append('stock_quantity', Number(form.stock_quantity));
     fd.append('publication_year', form.publication_year ? Number(form.publication_year) : '');
+    fd.append('category_id', form.category_id || '');
 
     if (form.cover_file) {
       fd.append('cover_image', form.cover_file);
@@ -114,6 +141,9 @@ function BooksTab() {
       price: book.price ?? '',
       stock_quantity: book.stock_quantity ?? '',
       publication_year: book.publication_year ?? '',
+      category_id: categoryOptions.find((category) =>
+        (book.categories || []).includes(category.category_name)
+      )?.category_id || '',
       cover_url: book.cover_url || '',
       cover_file: null,
       cover_preview: '',
@@ -155,10 +185,32 @@ function BooksTab() {
   if (loading) return <p className="admin-state-msg">Loading books...</p>;
   if (error) return <p className="admin-state-msg error">{error}</p>;
 
+  const visibleBooks = books.filter((book) => {
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = !query || [book.title, book.isbn, ...(book.categories || [])]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+    const matchesCategory = selectedCategory === 'All' || (book.categories || []).includes(selectedCategory);
+    return matchesSearch && matchesCategory;
+  });
+
   return (
     <div>
       <div className="admin-panel-toolbar">
-        <h3>Book Inventory ({books.length})</h3>
+        <h3>Book Inventory ({visibleBooks.length}{visibleBooks.length !== books.length ? ` of ${books.length}` : ''})</h3>
+        <div className="admin-books-tools">
+          <input
+            type="search"
+            placeholder="Search stock..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}>
+            <option value="All">All categories</option>
+            {categoryOptions.map((category) => (
+              <option key={category.category_id} value={category.category_name}>{category.category_name}</option>
+            ))}
+          </select>
+        </div>
         <button
           className={`admin-primary-btn ${showCreateForm ? 'cancel' : ''}`}
           onClick={() => { setEditingId(null); setShowCreateForm(!showCreateForm); }}
@@ -169,7 +221,7 @@ function BooksTab() {
 
       {showCreateForm && (
         <form onSubmit={handleCreateSubmit} className="admin-form-card">
-          <BookFormFields form={createForm} setForm={setCreateForm} />
+          <BookFormFields form={createForm} setForm={setCreateForm} categories={categoryOptions} />
           <div className="admin-form-actions">
             <button type="submit" className="btn-save">Create Book</button>
           </div>
@@ -191,12 +243,12 @@ function BooksTab() {
           {books.length === 0 ? (
             <tr><td colSpan={6} className="admin-empty-row">No books found.</td></tr>
           ) : (
-            books.map((book) =>
+            visibleBooks.map((book) =>
               editingId === book.book_id ? (
                 <tr key={book.book_id}>
                   <td colSpan={6} className="edit-row-cell">
                     <form onSubmit={(e) => handleEditSubmit(e, book.book_id)}>
-                      <BookFormFields form={editForm} setForm={setEditForm} />
+                      <BookFormFields form={editForm} setForm={setEditForm} categories={categoryOptions} />
                       <div className="admin-form-actions">
                         <button type="submit" className="btn-save">Save Changes</button>
                         <button type="button" className="btn-cancel" onClick={cancelEdit}>Cancel</button>
@@ -244,7 +296,7 @@ function BooksTab() {
   );
 }
 
-function BookFormFields({ form, setForm }) {
+function BookFormFields({ form, setForm, categories }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -274,6 +326,17 @@ function BookFormFields({ form, setForm }) {
         placeholder="Pub. Year" type="number" value={form.publication_year}
         onChange={(e) => setForm({ ...form, publication_year: e.target.value })}
       />
+      <select
+        value={form.category_id}
+        onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+      >
+        <option value="">No category</option>
+        {categories.map((category) => (
+          <option key={category.category_id} value={category.category_id}>
+            {category.category_name}
+          </option>
+        ))}
+      </select>
 
       <input
         type="file"
@@ -302,6 +365,9 @@ function BookFormFields({ form, setForm }) {
 function OrdersTab() {
   const [orders, setOrders] = useState([]);
   const [deliverymen, setDeliverymen] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+  const [detailCache, setDetailCache] = useState({});
+  const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -316,7 +382,7 @@ function OrdersTab() {
       setError('');
     } catch (err) {
       console.error('Failed to load orders:', err);
-      setError('Failed to load orders.');
+      setError(err.message || 'Failed to load orders.');
     } finally {
       setLoading(false);
     }
@@ -339,6 +405,24 @@ function OrdersTab() {
       loadOrders();
     } catch (err) {
       alert(err.message || 'Failed to update order status');
+    }
+  };
+
+  const toggleOrderDetails = async (orderId) => {
+    if (expandedId === orderId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(orderId);
+    if (detailCache[orderId]) return;
+    setDetailLoadingId(orderId);
+    try {
+      const detail = await api.getAdminOrderDetail(orderId);
+      setDetailCache((previous) => ({ ...previous, [orderId]: detail }));
+    } catch (err) {
+      setDetailCache((previous) => ({ ...previous, [orderId]: { error: err.message } }));
+    } finally {
+      setDetailLoadingId(null);
     }
   };
 
@@ -393,8 +477,8 @@ function OrdersTab() {
           ) : (
             orders.map((order) => (
               <Fragment key={order.order_id}>
-                <tr>
-                  <td>#{order.order_id}</td>
+                <tr className="admin-order-row" onClick={() => toggleOrderDetails(order.order_id)}>
+                  <td>#{order.order_id}{/*<small className="admin-expand-hint">{expandedId === order.order_id ? 'Hide details' : 'View details'}</small>*/}</td>
                   <td>
                     <div className="admin-cell-title">{order.username}</div>
                     <div style={{ fontSize: '0.78rem', color: '#8c827a' }}>{order.email}</div>
@@ -414,17 +498,19 @@ function OrdersTab() {
                       <select
                         className="admin-status-select"
                         value={order.status}
+                        onClick={(event) => event.stopPropagation()}
                         onChange={(e) => handleStatusChange(order.order_id, e.target.value)}
                       >
-                        {['pending', 'confirmed', 'processing', 'cancelled', 'returned'].map((s) => (
+                        {ORDER_STATUSES.map((s) => (
                           <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
                     )}
                   </td>
                   <td>
-                    {['confirmed', 'processing'].includes(order.status) && order.payment_status === 'paid' && (
-                      <button className="admin-icon-btn" onClick={() => startAssign(order)}>
+                    {['confirmed', 'processing'].includes(order.status) &&
+                      (order.payment_status === 'paid' || order.payment_method === 'cash_on_delivery') && (
+                      <button className="admin-icon-btn" onClick={(event) => { event.stopPropagation(); startAssign(order); }}>
                         Assign Delivery
                       </button>
                     )}
@@ -436,6 +522,7 @@ function OrdersTab() {
                         <select
                           className="admin-status-select"
                           value={order.delivery_status || 'picked_up'}
+                          onClick={(event) => event.stopPropagation()}
                           onChange={(e) => handleDeliveryStatusChange(order, e.target.value)}
                         >
                           {DELIVERY_STATUSES.map((s) => (
@@ -452,6 +539,27 @@ function OrdersTab() {
                     )}
                   </td>
                 </tr>
+                {expandedId === order.order_id && (
+                  <tr>
+                    <td colSpan={6} className="admin-order-detail-cell" onClick={(event) => event.stopPropagation()}>
+                      {detailLoadingId === order.order_id && <p>Loading order details...</p>}
+                      {detailCache[order.order_id]?.error && <p className="admin-state-msg error">{detailCache[order.order_id].error}</p>}
+                      {detailCache[order.order_id] && !detailCache[order.order_id].error && (
+                        <div className="admin-order-detail">
+                          <p><strong>Payment method:</strong> {formatPaymentMethod(detailCache[order.order_id].order.payment_method)}</p>
+                          <p><strong>Shipping address:</strong> {[detailCache[order.order_id].order.shipping_house_no, detailCache[order.order_id].order.shipping_street, detailCache[order.order_id].order.shipping_city, detailCache[order.order_id].order.shipping_country].filter(Boolean).join(', ') || 'Not provided'}</p>
+                          <h4>Items</h4>
+                          {detailCache[order.order_id].items.map((item) => (
+                            <div className="admin-order-item" key={item.order_item_id}>
+                              <span>{item.title}</span><span>× {item.quantity}</span><span>Tk {Number(item.unit_price).toFixed(2)}</span>
+                            </div>
+                          ))}
+                          {detailCache[order.order_id].delivery && <p><strong>Delivery:</strong> {detailCache[order.order_id].delivery.deliveryman_name || 'Unassigned'}{detailCache[order.order_id].delivery.tracking_number ? ` · ${detailCache[order.order_id].delivery.tracking_number}` : ''}</p>}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
                 {assigningId === order.order_id && (
                   <tr>
                     <td colSpan={6} className="edit-row-cell">
@@ -513,7 +621,7 @@ function DeliverymenTab() {
       setError('');
     } catch (err) {
       console.error('Failed to load deliverymen:', err);
-      setError('Failed to load deliverymen.');
+      setError(err.message || 'Failed to load deliverymen.');
     } finally {
       setLoading(false);
     }
@@ -669,6 +777,8 @@ function UsersTab() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({ username: '', email: '', password: '' });
 
   useEffect(() => {
     let isMounted = true;
@@ -679,7 +789,7 @@ function UsersTab() {
         if (isMounted) setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to load users:', err);
-        if (isMounted) setError('Failed to load users.');
+        if (isMounted) setError(err.message || 'Failed to load users.');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -691,11 +801,44 @@ function UsersTab() {
   if (loading) return <p className="admin-state-msg">Loading users...</p>;
   if (error) return <p className="admin-state-msg error">{error}</p>;
 
+  const handleCreateAdmin = async (event) => {
+    event.preventDefault();
+    try {
+      await api.createAdmin(createForm);
+      setCreateForm({ username: '', email: '', password: '' });
+      setShowCreateForm(false);
+      window.location.reload();
+    } catch (err) {
+      alert(err.message || 'Failed to create admin');
+    }
+  };
+
   return (
     <div>
       <div className="admin-panel-toolbar">
         <h3>Registered Users ({users.length})</h3>
+        <button
+          className={`admin-primary-btn ${showCreateForm ? 'cancel' : ''}`}
+          onClick={() => setShowCreateForm(!showCreateForm)}
+        >
+          {showCreateForm ? 'Cancel' : '+ Create Admin'}
+        </button>
       </div>
+      {showCreateForm && (
+        <form onSubmit={handleCreateAdmin} className="admin-form-card">
+          <div className="admin-form-grid">
+            <input placeholder="Username" required value={createForm.username}
+              onChange={(event) => setCreateForm({ ...createForm, username: event.target.value })} />
+            <input type="email" pattern="[^\s@]+@[^\s@]+\.[A-Za-z]{2,}" title="Enter an email address with a valid domain" placeholder="Email" required value={createForm.email}
+              onChange={(event) => setCreateForm({ ...createForm, email: event.target.value })} />
+            <input type="password" placeholder="Password (min. 6 characters)" minLength={6} required value={createForm.password}
+              onChange={(event) => setCreateForm({ ...createForm, password: event.target.value })} />
+          </div>
+          <div className="admin-form-actions">
+            <button type="submit" className="btn-save">Create Admin</button>
+          </div>
+        </form>
+      )}
       <table className="admin-table">
         <thead>
           <tr>

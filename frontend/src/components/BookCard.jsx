@@ -28,7 +28,7 @@ function StarRating({ rating, count }) {
   );
 }
 
-export default function BookCard({ book, onAddToCart, onHeartClick }) {
+export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetails }) {
   const genreText = Array.isArray(book.categories) ? book.categories.join(' • ') : (book.category_name || 'Book');
   const authorText = Array.isArray(book.authors) ? book.authors.join(', ') : (book.author_name || 'Various Authors');
 
@@ -37,7 +37,7 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
   const hasRealCover = book.cover_url && book.cover_url !== '/images/placeholder-book.jpg';
 
   return (
-    <div className="book-card">
+    <div className="book-card" onClick={() => onOpenDetails(book.book_id)} role="button" tabIndex={0}>
       <div className="cover-wrapper">
         {hasRealCover ? (
           <img
@@ -54,7 +54,7 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
         <button
           className="wishlist-float-btn"
           title="Save to Wishlist"
-          onClick={() => onHeartClick(book)}
+          onClick={(event) => { event.stopPropagation(); onHeartClick(book); }}
         >
           ♡
         </button>
@@ -77,7 +77,7 @@ export default function BookCard({ book, onAddToCart, onHeartClick }) {
         <button
           className="cart-action-btn"
           disabled={book.stock_quantity <= 0}
-          onClick={() => onAddToCart(book.book_id)}
+          onClick={(event) => { event.stopPropagation(); onAddToCart(book.book_id); }}
         >
           {book.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock'}
         </button>

@@ -1,11 +1,21 @@
 const express= require('express');
 const pool = require('./db');
 require('dotenv').config();
+const cookieParser = require('cookie-parser');
 
 const app = express();
 app.use(express.json());
 const cors = require('cors');
-app.use(cors()); 
+app.use(cookieParser());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Origin not allowed by CORS'));
+  },
+  credentials: true
+}));
 
 app.use('/auth', require('./routes/auth'));
 app.use('/cart', require('./routes/cart'));

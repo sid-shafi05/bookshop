@@ -2,7 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { verifyToken } = require('../middleware/auth');
 
+// Add token verification to customer order routes
+router.use(verifyToken);
 // ------------------------------------------------------------------
 // Helper: read the customer's current cart (same shape as cart.js)
 // ------------------------------------------------------------------
@@ -18,7 +21,18 @@ async function getCartItems(client, customerId) {
   const result = await client.query(query, [customerId]);
   return result.rows;
 }
+async function verifyOrderOwnership(orderId, userId) {
+  const result = await pool.query(
+    'SELECT customer_id FROM orders WHERE order_id = $1',
+    [orderId]
+  );
 
+  if (result.rows.length === 0) return null;
+
+  return Number(result.rows[0].customer_id) === Number(userId)
+    ? result.rows[0]
+    : false;
+}
 // ====================================================================
 // POST /orders/checkout -> turns the cart into a 'pending' order
 // Body: { customer_id, payment_method, coupon_code?,
@@ -31,12 +45,26 @@ router.post('/checkout', async (req, res) => {
     shipping_house_no, shipping_street, shipping_city,
     shipping_postal_code, shipping_country
   } = req.body;
-
   if (!customer_id) return res.status(400).json({ error: 'customer_id is required' });
+
+  // Can only checkout for yourself.
+  if (Number(customer_id) !== Number(req.userId)) {
+    return res.status(403).json({ error: 'Access denied: cannot checkout for another user' });
+  }
+
+  const allowedPaymentMethods = ['cash_on_delivery', 'mock_online'];
+
+if (!allowedPaymentMethods.includes(payment_method)) {
+  return res.status(400).json({
+    error: 'Invalid payment method'
+  });
+}
+
   if (!shipping_street || !shipping_city || !shipping_country) {
     return res.status(400).json({ error: 'Shipping address is incomplete' });
   }
-
+ const paymentStatus =
+    payment_method === 'cash_on_delivery' ? 'unpaid' : 'paid';
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -49,7 +77,7 @@ router.post('/checkout', async (req, res) => {
 
     // Verify stock for every line before touching anything
     for (const item of cartItems) {
-      if (item.quantity > item.stock_quantity) {
+      if (item.quantity > item.stock_quantity || item.quantity<=0) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: `"${item.title}" only has ${item.stock_quantity} left in stock` });
       }
@@ -81,13 +109,15 @@ router.post('/checkout', async (req, res) => {
 
     const total = Math.max(subtotal - discount, 0);
 
+ 
+
     const orderRes = await client.query(
       `INSERT INTO orders
         (customer_id, coupon_id, total_amount, status, payment_status, payment_method,
          shipping_house_no, shipping_street, shipping_city, shipping_postal_code, shipping_country)
-       VALUES ($1,$2,$3,'pending','unpaid',$4,$5,$6,$7,$8,$9)
+       VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [customer_id, coupon ? coupon.coupon_id : null, total.toFixed(2), payment_method || null,
+      [customer_id, coupon ? coupon.coupon_id : null, total.toFixed(2),paymentStatus ,payment_method || null,
         shipping_house_no || null, shipping_street, shipping_city, shipping_postal_code || null, shipping_country]
     );
     const order = orderRes.rows[0];
@@ -108,9 +138,15 @@ router.post('/checkout', async (req, res) => {
       [customer_id]
     );
 
+    const notification =
+      payment_method === 'cash_on_delivery'
+        ? `Order #${order.order_id} placed successfully. Payment will be collected upon delivery.`
+        : `Order #${order.order_id} placed successfully. Simulated online payment recorded.`;
+
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'order')`,
-      [customer_id, `Order #${order.order_id} placed — total Tk ${total.toFixed(2)}. Please complete payment.`]
+      `INSERT INTO notifications (user_id, text, topic)
+       VALUES ($1, $2, 'order')`,
+      [customer_id, notification]
     );
 
     await client.query('COMMIT');
@@ -127,9 +163,13 @@ router.post('/checkout', async (req, res) => {
 // ====================================================================
 // POST /orders/:id/pay -> mock payment gateway, always succeeds
 // ====================================================================
-router.post('/:id/pay', async (req, res) => {
+/*router.post('/:id/pay', async (req, res) => {
   const { id } = req.params;
   try {
+        const ownership = await verifyOrderOwnership(id, req.userId);
+    if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+    if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
+
     const orderRes = await pool.query('SELECT * FROM orders WHERE order_id = $1', [id]);
     const order = orderRes.rows[0];
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -138,8 +178,9 @@ router.post('/:id/pay', async (req, res) => {
 
     const result = await pool.query(
       `UPDATE orders
-       SET payment_status = 'paid', status = 'confirmed', updated_at = CURRENT_TIMESTAMP
-       WHERE order_id = $1 RETURNING *`,
+SET payment_status = 'paid',
+    updated_at = CURRENT_TIMESTAMP
+WHERE order_id = $1 RETURNING *`,
       [id]
     );
 
@@ -153,13 +194,20 @@ router.post('/:id/pay', async (req, res) => {
     console.error('Payment error:', err.message);
     res.status(500).json({ error: 'Payment failed' });
   }
-});
+});*/
 
 // ====================================================================
 // GET /orders/customer/:customer_id -> order history list
 // ====================================================================
 router.get('/customer/:customer_id', async (req, res) => {
+    const { customer_id } = req.params;
+
+  // can only see your own orders
+  if (Number(customer_id) !== Number(req.userId)) {
+    return res.status(403).json({ error: 'Access denied: cannot view another user\'s orders' });
+  }
   try {
+
     const result = await pool.query(
       `SELECT o.*,
         (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id)::int AS item_count,
@@ -168,7 +216,7 @@ router.get('/customer/:customer_id', async (req, res) => {
        LEFT JOIN deliveries d ON d.order_id = o.order_id
        WHERE o.customer_id = $1
        ORDER BY o.order_date DESC`,
-      [req.params.customer_id]
+      [customer_id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -183,6 +231,11 @@ router.get('/customer/:customer_id', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
   try {
+  
+    const ownership = await verifyOrderOwnership(id, req.userId);
+    if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+    if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
+
     const orderRes = await pool.query('SELECT * FROM orders WHERE order_id = $1', [id]);
     const order = orderRes.rows[0];
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -223,6 +276,10 @@ router.get('/:id', async (req, res) => {
 // ====================================================================
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
+    const ownership = await verifyOrderOwnership(id, req.userId);
+  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+  if (ownership === false) return res.status(403).json({ error: 'You cannot cancel another user\'s order' });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -259,8 +316,12 @@ router.put('/:id/cancel', async (req, res) => {
 // Only allowed once the admin has shipped it. Marks both the order
 // and its delivery record as 'delivered', which unlocks reviews.
 // ====================================================================
-router.put('/:id/receive', async (req, res) => {
+/*router.put('/:id/receive', async (req, res) => {
   const { id } = req.params;
+    const ownership = await verifyOrderOwnership(id, req.userId);
+  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+  if (ownership === false) return res.status(403).json({ error: 'Access denied: cannot confirm receipt of another user\'s order' });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -295,6 +356,6 @@ router.put('/:id/receive', async (req, res) => {
   } finally {
     client.release();
   }
-});
+});*/
 
 module.exports = router;

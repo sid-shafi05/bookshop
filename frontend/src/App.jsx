@@ -10,29 +10,11 @@ import AuthModal from './components/AuthModal';
 import AdminDashboard from './components/AdminDashboard';
 import CheckoutModal from './components/CheckoutModal';
 import OrdersView from './components/OrdersView';
+import BookDetails from './components/BookDetails';
 import './App.css';
 
 const AUTH_USER_KEY = 'bookstore_user';
-const AUTH_TOKEN_KEY = 'bookstore_token';
 const VIEW_KEY = 'bookstore_view';
-
-function parseJwtPayload(token) {
-  try {
-    const payloadPart = token.split('.')[1];
-    if (!payloadPart) return null;
-    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
-
-function isTokenExpired(token) {
-  const payload = parseJwtPayload(token);
-  if (!payload || !payload.exp) return true;
-  return Date.now() >= payload.exp * 1000;
-}
 
 export default function App() {
   const [books, setBooks] = useState([]);
@@ -53,11 +35,8 @@ export default function App() {
     // logged-in user — localStorage is shared across every tab on the origin,
     // which is why two accounts couldn't be used side by side before.
     const savedUser = sessionStorage.getItem(AUTH_USER_KEY);
-    const savedToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
-
-    if (!savedUser || !savedToken || isTokenExpired(savedToken)) {
+    if (!savedUser) {
       sessionStorage.removeItem(AUTH_USER_KEY);
-      sessionStorage.removeItem(AUTH_TOKEN_KEY);
       return null;
     }
 
@@ -65,7 +44,6 @@ export default function App() {
       return JSON.parse(savedUser);
     } catch {
       sessionStorage.removeItem(AUTH_USER_KEY);
-      sessionStorage.removeItem(AUTH_TOKEN_KEY);
       return null;
     }
   });
@@ -77,6 +55,29 @@ export default function App() {
   const [bookToSave, setBookToSave] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [authResolved, setAuthResolved] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getCurrentUser()
+      .then((res) => {
+        if (isMounted) {
+          setUser(res.user);
+          setCurrentView(res.user.role === 'admin' ? 'admin' : 'shop');
+          sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUser(null);
+          sessionStorage.removeItem(AUTH_USER_KEY);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setAuthResolved(true);
+      });
+    return () => { isMounted = false; };
+  }, []);
 
   const [showCart, setShowCart] = useState(false);
   const [showWishlist, setShowWishlist] = useState(false);
@@ -87,6 +88,7 @@ export default function App() {
   // Order flow state
   const [showCheckout, setShowCheckout] = useState(false);
   const [ordersInitialId, setOrdersInitialId] = useState(null);
+  const [selectedBook, setSelectedBook] = useState(null);
 
   useEffect(() => {
     sessionStorage.setItem(VIEW_KEY, currentView);
@@ -179,25 +181,18 @@ export default function App() {
   }, [selectedCategory, searchQuery, sortBy, books]);
 
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
-  const refreshCart = async (uid) => { const data = await api.getCart(uid).catch(() => ({ items: [], cart_subtotal: '0.00' })); setCart(data || { items: [], cart_subtotal: '0.00' }); };
-  const handleSignOut = () => {
-    sessionStorage.removeItem(AUTH_USER_KEY);
-    sessionStorage.removeItem(AUTH_TOKEN_KEY);
-    sessionStorage.removeItem(VIEW_KEY);
-    setUser(null);
-    setCart({ items: [], cart_subtotal: '0.00' });
-    setWishlists([]);
-    setSelectedWishlistId(null);
-    setCurrentWishlistBooks([]);
-    setShowCart(false);
-    setShowWishlist(false);
-    setShowCheckout(false);
-    setCurrentView('shop');
-    showToast('Signed out');
+  const refreshCart = async (uid) => {
+    try {
+      const data = await api.getCart(uid);
+      setCart(data || { items: [], cart_subtotal: '0.00' });
+    } catch (err) {
+      showToast(err.message || 'Failed to load cart');
+    }
   };
   const refreshWishlists = async (uid) => {
-    const lists = await api.getCustomerWishlists(uid).catch(() => []);
-    setWishlists(lists || []);
+    try {
+      const lists = await api.getCustomerWishlists(uid);
+      setWishlists(lists || []);
     if (lists && lists.length > 0) {
       const selectedExists = selectedWishlistId && lists.some(w => w.wishlist_id === Number(selectedWishlistId));
       const activeId = selectedExists ? Number(selectedWishlistId) : lists[0].wishlist_id;
@@ -207,6 +202,9 @@ export default function App() {
       setSelectedWishlistId(null);
       setCurrentWishlistBooks([]);
     }
+    } catch (err) {
+      showToast(err.message || 'Failed to load wishlists');
+    }
   };
   const loadWishlistBooks = async (wid) => {
     const data = await api.getWishlistBooks(wid).catch(() => ({ books: [] }));
@@ -215,11 +213,17 @@ export default function App() {
 
   const handleAddToCart = async (bookId) => {
     if (!user) { setIsLoginMode(true); setShowAuthModal(true); return showToast('Please sign in first'); }
-    try { await api.addToCart({ customer_id: user.id, book_id: bookId }); showToast('🛒 Added to Cart'); refreshCart(user.id); } catch (e) { showToast('Error adding to cart'); }
+    try { await api.addToCart({ customer_id: user.id, book_id: bookId }); showToast('🛒 Added to Cart'); await refreshCart(user.id); } catch (e) { showToast(e.message || 'Error adding to cart'); }
   };
   const handleSaveToSpecificList = async (wid) => {
-    await api.addToWishlist({ wishlist_id: wid, book_id: bookToSave.book_id });
-    showToast('❤️ Saved to Wishlist'); setBookToSave(null); refreshWishlists(user.id);
+    try {
+      const response = await api.addToWishlist({ wishlist_id: wid, book_id: bookToSave.book_id });
+      showToast(response.added ? '❤️ Saved to Wishlist' : 'That book is already in this wishlist');
+      setBookToSave(null);
+      await refreshWishlists(user.id);
+    } catch (err) {
+      showToast(err.message || 'Failed to save to wishlist');
+    }
   };
   const handleCreateNewWishlist = async (e) => {
     // 1. STOPS THE PAGE FROM REFRESHING AND LOGGING YOU OUT!
@@ -246,11 +250,13 @@ export default function App() {
 
       // 3. If saving a book right now, insert the book into the new list!
       if (bookToSave && res.wishlist) {
-        await api.addToWishlist({
+        const saveResponse = await api.addToWishlist({
           wishlist_id: res.wishlist.wishlist_id,
           book_id: bookToSave.book_id
         });
-        showToast(`❤️ Saved to "${res.wishlist.wishlist_name}"!`);
+        showToast(saveResponse.added
+          ? `❤️ Saved to "${res.wishlist.wishlist_name}"!`
+          : `That book is already in "${res.wishlist.wishlist_name}"`);
       }
 
       setNewWishlistName('');
@@ -274,37 +280,46 @@ export default function App() {
       alert(err.message || 'Failed to delete wishlist');
     }
   };
-const handleAuthSubmit = async (e) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
     try {
-      // 1. Call the API first to get 'res'
-      const res = isLoginMode ? await api.login(authForm) : await api.signup(authForm);
-
-      // 2. Extract user data from the response
-      const userData = res.user || {
-        id: res.user_id,
-        username: res.username,
-        email: res.email,
-        role: res.role
-      };
-
-      // 3. Save to React State & persistent storage
-      setUser(userData);
-      if (res.token) {
-        sessionStorage.setItem(AUTH_TOKEN_KEY, res.token);
+      if (isLoginMode) {
+        const res = await api.login({ email: authForm.email, password: authForm.password });
+        
+        setUser(res.user);
+        setCurrentView(res.user.role === 'admin' ? 'admin' : 'shop');
+        sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+        showToast(`👋 Welcome back, ${res.user.username}!`);
+      } else {
+        const res = await api.signup(authForm);
+        const registeredUser = res.user || {
+          id: res.user_id, username: res.username, email: res.email, role: res.role
+        };
+        setUser(registeredUser);
+        setCurrentView(registeredUser.role === 'admin' ? 'admin' : 'shop');
+        sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(registeredUser));
+        showToast('🎉 Account registered successfully!');
       }
-      sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData));
 
-      // 4. Close modal and show message
       setShowAuthModal(false);
-      showToast(`Welcome, ${authForm.username || authForm.email}`);
       setAuthForm({ username: '', email: '', password: '' });
-
     } catch (err) {
-      alert(err.message || 'Auth failed');
+      alert(err.message || 'Authentication failed');
     }
   };
 
+   const handleSignOut = async () => {
+    try {
+      // Optional: Calls the server-side logout to blacklist the token (Checklist 3.1)
+      await api.logout().catch(() => {});
+    } finally {
+      setUser(null);
+      sessionStorage.removeItem(AUTH_USER_KEY);
+      sessionStorage.removeItem(VIEW_KEY);
+      setCurrentView('shop');
+      showToast('Signed out successfully');
+    }
+  };
   // ------------------------------------------------------------------
   // Order flow: Cart -> Checkout -> Pay -> Order tracking -> Review
   // ------------------------------------------------------------------
@@ -314,12 +329,17 @@ const handleAuthSubmit = async (e) => {
     setShowCheckout(true);
   };
 
-  const handleOrderPaid = (order) => {
+  const handleOrderPaid = (checkoutResponse) => {
+    const order = checkoutResponse.order || checkoutResponse;
     setShowCheckout(false);
-    showToast(`✅ Payment confirmed for Order #${order.order_id}`);
     refreshCart(user.id);
     setOrdersInitialId(order.order_id);
     setCurrentView('orders');
+    showToast(
+      order.payment_status === 'paid'
+        ? `Order #${order.order_id} placed. Total: Tk ${checkoutResponse.total}. Simulated payment recorded.`
+        : `Order #${order.order_id} placed. Total: Tk ${checkoutResponse.total}. Payment will be collected upon delivery.`
+    );
   };
 
   const handleOpenOrders = () => {
@@ -328,30 +348,59 @@ const handleAuthSubmit = async (e) => {
     setCurrentView('orders');
   };
 
+  const handleOpenBook = async (bookId) => {
+    try {
+      setSelectedBook(await api.getBook(bookId));
+    } catch (err) {
+      showToast(err.message || 'Failed to load book details');
+    }
+  };
+
   const handleSelectCategory = (cat) => {
     setSelectedCategory(cat);
     setCurrentView('shop');
   };
 
+  if (!authResolved) {
+    return <div className="auth-gate-loading">Checking your session...</div>;
+  }
+
+  if (!user) {
+    return (
+      <AuthModal
+        isOpen
+        onClose={() => {}}
+        canClose={false}
+        isLoginMode={isLoginMode}
+        setIsLoginMode={setIsLoginMode}
+        authForm={authForm}
+        setAuthForm={setAuthForm}
+        onSubmit={handleAuthSubmit}
+      />
+    );
+  }
+
   return (
     <div className="bn-layout">
-      <Navbar
-        selectedCategory={selectedCategory} setSelectedCategory={handleSelectCategory}
-        searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-        wishlistCount={wishlists.reduce((acc, curr) => acc + Number(curr.total_saved_books || 0), 0)}
-        cartCount={cart.items ? cart.items.length : 0} user={user}
-        onOpenWishlist={() => user ? setShowWishlist(true) : setShowAuthModal(true)}
-        onOpenCart={() => user ? setShowCart(true) : setShowAuthModal(true)}
-        onOpenAuth={() => { setIsLoginMode(true); setShowAuthModal(true); }}
-        onOpenAdmin={() => setCurrentView('admin')}
-        onOpenOrders={handleOpenOrders}
-        onSignOut={handleSignOut}
-      />
+      {user.role !== 'admin' && (
+        <Navbar
+          selectedCategory={selectedCategory} setSelectedCategory={handleSelectCategory}
+          searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+          wishlistCount={wishlists.reduce((acc, curr) => acc + Number(curr.total_saved_books || 0), 0)}
+          cartCount={cart.items ? cart.items.length : 0} user={user}
+          onOpenWishlist={() => user ? setShowWishlist(true) : setShowAuthModal(true)}
+          onOpenCart={() => user ? setShowCart(true) : setShowAuthModal(true)}
+          onOpenAuth={() => { setIsLoginMode(true); setShowAuthModal(true); }}
+          onOpenAdmin={() => setCurrentView('admin')}
+          onOpenOrders={handleOpenOrders}
+          onSignOut={handleSignOut}
+        />
+      )}
 
       {toastMessage && <div className="toast-bar">{toastMessage}</div>}
 
-      {currentView === 'admin' ? (
-        <AdminDashboard onClose={() => setCurrentView('shop')} />
+      {user.role === 'admin' ? (
+        <AdminDashboard user={user} onClose={handleSignOut} />
       ) : currentView === 'orders' ? (
         <OrdersView
           customerId={user ? user.id : null}
@@ -359,6 +408,14 @@ const handleAuthSubmit = async (e) => {
           onCartChanged={() => user && refreshCart(user.id)}
           onReviewSubmitted={loadBooks}
           onClose={() => setCurrentView('shop')}
+        />
+      ) : selectedBook ? (
+        <BookDetails
+          book={selectedBook}
+          customerId={user.id}
+          onBack={() => setSelectedBook(null)}
+          onAddToCart={handleAddToCart}
+          onAddToWishlist={(book) => setBookToSave(book)}
         />
       ) : (
         <main className="catalog-wrapper">
@@ -380,7 +437,7 @@ const handleAuthSubmit = async (e) => {
           {loading ? <div className="empty-state">Loading books from database...</div> : (
             <div className="book-grid">
               {filteredBooks.map(b => (
-                <BookCard key={b.book_id} book={b} onAddToCart={handleAddToCart} onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)} />
+                <BookCard key={b.book_id} book={b} onAddToCart={handleAddToCart} onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)} onOpenDetails={handleOpenBook} />
               ))}
             </div>
           )}
@@ -409,7 +466,19 @@ const handleAuthSubmit = async (e) => {
         onRemoveItem={async (wid, bid) => { await api.removeFromWishlist({ wishlist_id: wid, book_id: bid }); refreshWishlists(user.id); }}
         onCreateList={handleCreateNewWishlist}
         onDeleteList={handleDeleteWishlist}
-        onRenameList={async (wid, newName) => { await api.renameWishlist({ wishlist_id: wid, new_name: newName, customer_id: user.id }); refreshWishlists(user.id); }}
+        onRenameList={async (wid, newName) => {
+          try {
+            await api.renameWishlist({
+              wishlist_id: wid,
+              new_name: newName,
+              customer_id: user.id
+            });
+            await refreshWishlists(user.id);
+            showToast('Wishlist renamed successfully');
+          } catch (err) {
+            alert(err.message || 'Failed to rename wishlist');
+          }
+        }}
         onSignOut={handleSignOut}
       />
 
