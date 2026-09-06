@@ -105,3 +105,9 @@ INSERT INTO deliverymen (name, phone, vehicle_type, is_active) VALUES
   ('Delwar Hossain', '01644-556677', 'Van', TRUE),
   ('Nasir Uddin', '01555-667788', 'Motorbike', FALSE),
   ('Kamal Ahmed', '01766-778899', 'Bicycle', TRUE);
+
+
+  -- User to Admin
+  UPDATE users
+SET role = 'admin'
+WHERE email = '_____@email.com'; --whatever email u selected

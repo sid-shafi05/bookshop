@@ -64,6 +64,17 @@ shipOrder: (orderId, { deliveryman_id, shipping_method, tracking_number }) =>
 updateDeliveryStatus: (deliveryId, status) =>
   request(`/admin/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
+// Deliveryman (self-service dashboard — logged in as the rider himself)
+getDeliverymanProfile: () => request('/deliveryman/me'),
+getDeliveryRequests: () => request('/deliveryman/requests'),
+getMyActiveDeliveries: () => request('/deliveryman/deliveries'),
+getMyDeliveryHistory: () => request('/deliveryman/deliveries/history'),
+getMyDeliveryDetail: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}`),
+acceptDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/accept`, { method: 'POST' }),
+declineDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/decline`, { method: 'POST' }),
+updateMyDeliveryStatus: (deliveryId, status) =>
+  request(`/deliveryman/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+
 // Books & Catalog
 getBooks: () => request('/books'),
 getBook: (bookId) => request(`/books/${bookId}`),

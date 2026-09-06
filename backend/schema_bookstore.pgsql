@@ -35,7 +35,7 @@ CREATE TABLE users (
     country VARCHAR(100),
     role VARCHAR(20) NOT NULL DEFAULT 'customer',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT users_role_check CHECK (role IN ('customer', 'admin'))
+    CONSTRAINT users_role_check CHECK (role IN ('customer', 'admin','deliveryman))
 );
 
 --2. AUTHORS

@@ -278,7 +278,9 @@ router.put('/orders/:id', async (req, res) => {
 });
 
 // POST /admin/orders/:id/ship -> assign a deliveryman, create/refresh the
-// delivery record, and move the order to 'shipped'
+// delivery record as 'pending_acceptance', and move the order to 'shipped'.
+// The rider must accept it from his own dashboard before he can act on it —
+// see deliveryman.routes.js.
 // Body: { deliveryman_id, shipping_method?, tracking_number? }
 router.post('/orders/:id/ship', async (req, res) => {
   const { id } = req.params;
@@ -305,9 +307,12 @@ router.post('/orders/:id/ship', async (req, res) => {
     const riderRes = await client.query('SELECT * FROM deliverymen WHERE deliveryman_id = $1', [deliveryman_id]);
     const rider = riderRes.rows[0];
     if (!rider) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Deliveryman not found' }); }
+    if (!rider.is_active) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'This deliveryman is inactive' }); }
 
     // One delivery row per order — create it if this is the first assignment,
-    // otherwise re-assign (e.g. swapping riders) while keeping the same tracking number
+    // otherwise re-assign (e.g. swapping riders) while keeping the same tracking number.
+    // Status always resets to 'pending_acceptance' — the newly assigned rider
+    // has to accept it himself before it becomes active.
     const existingRes = await client.query('SELECT * FROM deliveries WHERE order_id = $1', [id]);
     let delivery;
     if (existingRes.rows.length > 0) {
@@ -316,7 +321,7 @@ router.post('/orders/:id/ship', async (req, res) => {
          SET deliveryman_id = $1, rider_name = $2, rider_phone = $3,
              shipping_method = COALESCE($4, shipping_method),
              tracking_number = COALESCE($5, tracking_number),
-             status = 'picked_up',
+             status = 'pending_acceptance',
              delivery_house_no = $6, delivery_street = $7, delivery_city = $8,
              delivery_postal_code = $9, delivery_country = $10
          WHERE order_id = $11 RETURNING *`,
@@ -329,7 +334,7 @@ router.post('/orders/:id/ship', async (req, res) => {
         `INSERT INTO deliveries
           (order_id, deliveryman_id, rider_name, rider_phone, shipping_method, tracking_number, status,
            delivery_house_no, delivery_street, delivery_city, delivery_postal_code, delivery_country)
-         VALUES ($1,$2,$3,$4,$5,$6,'picked_up',$7,$8,$9,$10,$11) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,'pending_acceptance',$7,$8,$9,$10,$11) RETURNING *`,
         [id, deliveryman_id, rider.name, rider.phone, shipping_method || null,
           tracking_number || `TRK-${id}-${Date.now().toString().slice(-6)}`,
           order.shipping_house_no, order.shipping_street, order.shipping_city, order.shipping_postal_code, order.shipping_country]
@@ -358,8 +363,10 @@ router.post('/orders/:id/ship', async (req, res) => {
   }
 });
 
-// PUT /admin/deliveries/:delivery_id/status -> advance the delivery's
-// progress. Marking it 'delivered' also marks the parent order delivered.
+// PUT /admin/deliveries/:delivery_id/status -> manual admin override.
+// Marking it 'delivered' also marks the parent order delivered. The rider's
+// own progression (preparing -> ... -> delivered) normally happens through
+// his own dashboard (deliveryman.routes.js) instead of this endpoint.
 router.put('/deliveries/:delivery_id/status', async (req, res) => {
   const { delivery_id } = req.params;
   const { status } = req.body;
@@ -413,12 +420,14 @@ router.put('/deliveries/:delivery_id/status', async (req, res) => {
 });
 
 // ====================================================================
-// DELIVERYMEN — basic CRUD for the pool of riders admins assign orders to
+// DELIVERYMEN — riders, now with their own login (role = 'deliveryman')
 // ====================================================================
 
 router.get('/deliverymen', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM deliverymen ORDER BY is_active DESC, name ASC');
+    const result = await pool.query(
+      'SELECT deliveryman_id, user_id, name, phone, vehicle_type, is_active FROM deliverymen ORDER BY is_active DESC, name ASC'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching deliverymen:', err.message);
@@ -426,21 +435,62 @@ router.get('/deliverymen', async (req, res) => {
   }
 });
 
+// Creates BOTH the login (users, role='deliveryman') and the roster entry
+// (deliverymen) in one go, the same way /admins creates an admin login.
 router.post('/deliverymen', async (req, res) => {
-  const { name, phone, vehicle_type } = req.body;
-  if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
+  const vehicle_type = typeof req.body.vehicle_type === 'string' ? req.body.vehicle_type.trim() || null : null;
+  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'Name and phone are required' });
+  }
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Username, email, and password are required to create the deliveryman\'s login' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) {
+    return res.status(400).json({ error: 'Please provide a valid email address' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'INSERT INTO deliverymen (name, phone, vehicle_type) VALUES ($1,$2,$3) RETURNING *',
-      [name, phone, vehicle_type || null]
+    await client.query('BEGIN');
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userResult = await client.query(
+      `INSERT INTO users (username, email, password_hash, role)
+       VALUES ($1, $2, $3, 'deliveryman')
+       RETURNING user_id`,
+      [username, email, passwordHash]
     );
-    res.status(201).json(result.rows[0]);
+    const userId = userResult.rows[0].user_id;
+
+    const riderResult = await client.query(
+      `INSERT INTO deliverymen (user_id, name, phone, vehicle_type) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, name, phone, vehicle_type]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json(riderResult.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An account with this username or email already exists' });
+    }
     console.error('Error creating deliveryman:', err.message);
     res.status(500).json({ error: 'Failed to add deliveryman' });
+  } finally {
+    client.release();
   }
 });
 
+// Roster-only fields — this deliberately does NOT touch the linked login.
+// Use a separate "reset password" flow if you need that later.
 router.put('/deliverymen/:id', async (req, res) => {
   const { id } = req.params;
   const { name, phone, vehicle_type, is_active } = req.body;
@@ -459,20 +509,38 @@ router.put('/deliverymen/:id', async (req, res) => {
 
 router.delete('/deliverymen/:id', async (req, res) => {
   const { id } = req.params;
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Riders with delivery history are deactivated instead of deleted so
     // past orders keep a valid reference; only unused riders are removed.
-    const inUse = await pool.query('SELECT 1 FROM deliveries WHERE deliveryman_id = $1 LIMIT 1', [id]);
+    const inUse = await client.query('SELECT 1 FROM deliveries WHERE deliveryman_id = $1 LIMIT 1', [id]);
     if (inUse.rows.length > 0) {
-      const result = await pool.query('UPDATE deliverymen SET is_active = FALSE WHERE deliveryman_id = $1 RETURNING *', [id]);
+      const result = await client.query('UPDATE deliverymen SET is_active = FALSE WHERE deliveryman_id = $1 RETURNING *', [id]);
+      await client.query('COMMIT');
       return res.json({ message: 'Deliveryman has delivery history and was deactivated instead of deleted', deliveryman: result.rows[0] });
     }
-    const result = await pool.query('DELETE FROM deliverymen WHERE deliveryman_id = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Deliveryman not found' });
+
+    const riderRes = await client.query('DELETE FROM deliverymen WHERE deliveryman_id = $1 RETURNING *', [id]);
+    if (riderRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Deliveryman not found' });
+    }
+    // Also remove the login so a deleted rider can't sign in anymore.
+    const rider = riderRes.rows[0];
+    if (rider.user_id) {
+      await client.query('DELETE FROM users WHERE user_id = $1', [rider.user_id]);
+    }
+
+    await client.query('COMMIT');
     res.json({ message: 'Deliveryman removed' });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error deleting deliveryman:', err.message);
     res.status(500).json({ error: 'Failed to delete deliveryman' });
+  } finally {
+    client.release();
   }
 });
 
