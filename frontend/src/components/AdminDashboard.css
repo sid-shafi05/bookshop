@@ -18,6 +18,32 @@
   max-width: 1400px;
   margin: 0 auto 28px;
 
+  .admin-order-row {
+    cursor: pointer;
+  }
+  .admin-expand-hint {
+    display: block;
+    margin-top: 3px;
+    color: #8c827a;
+    font-size: 0.7rem;
+  }
+  .admin-order-detail-cell {
+    padding: 18px 24px !important;
+    background: #faf8f6;
+  }
+  .admin-order-detail p {
+    margin: 5px 0;
+  }
+  .admin-order-detail h4 {
+    margin: 14px 0 6px;
+  }
+  .admin-order-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 18px;
+    padding: 7px 0;
+    border-top: 1px solid #e8e1da;
+  }
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -51,6 +77,34 @@
   background: #eee9e4;
   border-color: #bdb3aa;
   transform: translateY(-1px);
+}
+
+.admin-profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.admin-profile {
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  text-align: right;
+}
+
+.admin-profile span {
+  color: #81766d;
+  font-size: 0.78rem;
+}
+
+.admin-profile small {
+  justify-self: end;
+  margin-top: 3px;
+  padding: 3px 6px;
+  background: #edf2f6;
+  color: #24577d;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 /* =========================================================
@@ -146,6 +200,27 @@
   font-weight: 700;
 
   color: #332b26;
+}
+
+.admin-books-tools {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.admin-books-tools input,
+.admin-books-tools select {
+  border: 1px solid #d8d0c8;
+  border-radius: 6px;
+  background: #fff;
+  color: #332b26;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.admin-books-tools input {
+  width: 190px;
 }
 
 /* =========================================================
@@ -631,7 +706,7 @@ input {
 .admin-status-select:focus {
   box-shadow: none !important;
   outline: none !important;
-}url(AdminDashboard.css)
+}
 
 
 /* =========================================================

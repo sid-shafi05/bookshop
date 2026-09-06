@@ -85,22 +85,6 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     }
   };
 
-  const handleMarkReceived = async (orderId) => {
-    if (!window.confirm('Confirm you received this order? This unlocks reviews for the books inside.')) return;
-    try {
-      const updated = await api.receiveOrder(orderId);
-      setOrders((prev) => prev.map((o) => (o.order_id === orderId ? { ...o, ...updated } : o)));
-      // detail was cached with can_review: false — drop it so re-expanding refetches fresh
-      setDetailCache((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
-      });
-    } catch (err) {
-      alert(err.message || 'Failed to confirm receipt');
-    }
-  };
-
   const openReviewForm = (orderId, item) => {
     setReviewTarget({ order_id: orderId, book_id: item.book_id, title: item.title });
     setReviewForm({ rating: 5, comment: '' });
@@ -230,11 +214,6 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       </button>
                     )}
 
-                    {status === 'shipped' && (
-                      <button className="btn-mark-received" onClick={() => handleMarkReceived(order.order_id)}>
-                        📦 Mark as Received
-                      </button>
-                    )}
                   </div>
                 )}
               </div>

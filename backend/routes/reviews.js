@@ -2,6 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { verifyToken } = require('../middleware/auth');
+
+// Add verifyToken middleware to ALL wishlist routes
+router.use(verifyToken);
+
 
 // GET /reviews/book/:book_id -> all reviews + average rating for a book
 router.get('/book/:book_id', async (req, res) => {
