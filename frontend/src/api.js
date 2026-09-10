@@ -48,6 +48,11 @@ export const api = {
   getAdminOrderDetail: (orderId) => request(`/admin/order-details/${orderId}`),
   updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
 
+  // Returns
+  requestReturn: (orderId, reason) => request(`/orders/${orderId}/return`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getAdminReturns: () => request('/admin/returns'),
+  resolveReturn: (returnId, decision) => request(`/admin/returns/${returnId}`, { method: 'PUT', body: JSON.stringify({ decision }) }),
+
   // Delivery assignment (admin)
   getDeliverymen: () => request('/admin/deliverymen'),
   createDeliveryman: (data) => request('/admin/deliverymen', { method: 'POST', body: JSON.stringify(data) }),

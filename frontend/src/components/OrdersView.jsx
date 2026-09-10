@@ -8,14 +8,18 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(initialOrderId || null);
 
-  // Full detail (items/delivery/can_review) is fetched lazily per order,
+  // Full detail (items/delivery/can_review/can_return) is fetched lazily per order,
   // since GET /orders/customer/:id only returns summary rows.
-  const [detailCache, setDetailCache] = useState({}); // { [order_id]: { items, delivery, can_review } }
+  const [detailCache, setDetailCache] = useState({}); // { [order_id]: { items, delivery, can_review, can_return, return_request } }
   const [detailLoadingId, setDetailLoadingId] = useState(null);
 
   const [reviewTarget, setReviewTarget] = useState(null); // { order_id, book_id, title }
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
+
+  const [returnTarget, setReturnTarget] = useState(null); // { order_id }
+  const [returnReason, setReturnReason] = useState('');
+  const [submittingReturn, setSubmittingReturn] = useState(false);
 
   const highlightRef = useRef(null);
 
@@ -59,7 +63,13 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
       const data = await api.getOrderDetail(orderId);
       setDetailCache((prev) => ({
         ...prev,
-        [orderId]: { items: data.items || [], delivery: data.delivery, can_review: data.can_review },
+        [orderId]: {
+          items: data.items || [],
+          delivery: data.delivery,
+          can_review: data.can_review,
+          can_return: data.can_return,
+          return_request: data.return_request,
+        },
       }));
     } catch (err) {
       setDetailCache((prev) => ({ ...prev, [orderId]: { items: [], error: err.message } }));
@@ -121,6 +131,29 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
       alert(err.message || 'Failed to submit review');
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const submitReturn = async (e) => {
+    e.preventDefault();
+    if (!returnTarget) return;
+    setSubmittingReturn(true);
+    try {
+      const created = await api.requestReturn(returnTarget.order_id, returnReason.trim());
+      setDetailCache((prev) => ({
+        ...prev,
+        [returnTarget.order_id]: {
+          ...prev[returnTarget.order_id],
+          can_return: false,
+          return_request: created,
+        },
+      }));
+      setReturnTarget(null);
+      setReturnReason('');
+    } catch (err) {
+      alert(err.message || 'Failed to submit return request');
+    } finally {
+      setSubmittingReturn(false);
     }
   };
 
@@ -214,6 +247,21 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       </button>
                     )}
 
+                    {detail?.can_return && (
+                      <button
+                        className="btn-danger-outline"
+                        onClick={() => setReturnTarget({ order_id: order.order_id })}
+                      >
+                        Request Return
+                      </button>
+                    )}
+
+                    {detail?.return_request && (
+                      <p className="order-delivery-note">
+                        Return status: <strong>{detail.return_request.status}</strong>
+                      </p>
+                    )}
+
                   </div>
                 )}
               </div>
@@ -250,6 +298,30 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                   {submittingReview ? 'Submitting…' : 'Submit Review'}
                 </button>
                 <button type="button" className="btn-cancel" onClick={() => setReviewTarget(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {returnTarget && (
+          <div className="review-modal-overlay" onClick={() => setReturnTarget(null)}>
+            <form className="review-modal" onClick={(e) => e.stopPropagation()} onSubmit={submitReturn}>
+              <h4>Request Return</h4>
+              <label>
+                Reason
+                <textarea
+                  required
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Why are you returning this order?"
+                  rows={3}
+                />
+              </label>
+              <div className="admin-form-actions">
+                <button type="submit" className="btn-save" disabled={submittingReturn}>
+                  {submittingReturn ? 'Submitting…' : 'Submit Return Request'}
+                </button>
+                <button type="button" className="btn-cancel" onClick={() => setReturnTarget(null)}>Cancel</button>
               </div>
             </form>
           </div>

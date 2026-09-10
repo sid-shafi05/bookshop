@@ -26,7 +26,7 @@ function formatPaymentMethod(method) {
 }
 
 export default function AdminDashboard({ onClose, user }) {
-  const [activeTab, setActiveTab] = useState('books'); // 'books' | 'orders' | 'users' | 'deliverymen'
+  const [activeTab, setActiveTab] = useState('books'); // 'books' | 'orders' | 'returns' | 'users' | 'deliverymen'
 
   return (
     <main className="admin-wrapper">
@@ -45,6 +45,7 @@ export default function AdminDashboard({ onClose, user }) {
       <div className="admin-tabs">
         <TabButton label="Books" active={activeTab === 'books'} onClick={() => setActiveTab('books')} />
         <TabButton label="Orders" active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
+        <TabButton label="Returns" active={activeTab === 'returns'} onClick={() => setActiveTab('returns')} />
         <TabButton label="Deliverymen" active={activeTab === 'deliverymen'} onClick={() => setActiveTab('deliverymen')} />
         <TabButton label="Users" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
       </div>
@@ -52,6 +53,7 @@ export default function AdminDashboard({ onClose, user }) {
       <div className="admin-panel">
         {activeTab === 'books' && <BooksTab />}
         {activeTab === 'orders' && <OrdersTab />}
+        {activeTab === 'returns' && <ReturnsTab />}
         {activeTab === 'deliverymen' && <DeliverymenTab />}
         {activeTab === 'users' && <UsersTab />}
       </div>
@@ -478,7 +480,7 @@ function OrdersTab() {
             orders.map((order) => (
               <Fragment key={order.order_id}>
                 <tr className="admin-order-row" onClick={() => toggleOrderDetails(order.order_id)}>
-                  <td>#{order.order_id}{/*<small className="admin-expand-hint">{expandedId === order.order_id ? 'Hide details' : 'View details'}</small>*/}</td>
+                  <td>#{order.order_id}</td>
                   <td>
                     <div className="admin-cell-title">{order.username}</div>
                     <div style={{ fontSize: '0.78rem', color: '#8c827a' }}>{order.email}</div>
@@ -591,6 +593,105 @@ function OrdersTab() {
                   </tr>
                 )}
               </Fragment>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   RETURNS TAB — approve or reject return requests
+   ========================================================================== */
+function ReturnsTab() {
+  const [returns, setReturns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAdminReturns();
+      setReturns(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load returns:', err);
+      setError(err.message || 'Failed to load returns.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const resolve = async (id, decision) => {
+    try {
+      await api.resolveReturn(id, decision);
+      loadReturnsQuiet();
+    } catch (err) {
+      alert(err.message || 'Failed to update return');
+    }
+  };
+
+  const loadReturnsQuiet = () => load();
+
+  if (loading) return <p className="admin-state-msg">Loading returns...</p>;
+  if (error) return <p className="admin-state-msg error">{error}</p>;
+
+  return (
+    <div>
+      <div className="admin-panel-toolbar">
+        <h3>Return Requests ({returns.length})</h3>
+      </div>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Reason</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {returns.length === 0 ? (
+            <tr><td colSpan={6} className="admin-empty-row">No return requests.</td></tr>
+          ) : (
+            returns.map((r) => (
+              <tr key={r.return_id}>
+                <td>#{r.order_id}</td>
+                <td>
+                  <div className="admin-cell-title">{r.username}</div>
+                  <div style={{ fontSize: '0.78rem', color: '#8c827a' }}>{r.email}</div>
+                </td>
+                <td>{r.reason}</td>
+                <td>Tk {Number(r.total_amount).toFixed(2)}</td>
+                <td>
+                  <span className={`admin-stock-pill ${
+                    r.status === 'approved' ? 'ok' : r.status === 'rejected' ? 'out' : 'low'
+                  }`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td>
+                  {r.status === 'pending' ? (
+                    <div className="admin-actions-cell">
+                      <button className="admin-icon-btn" onClick={() => resolve(r.return_id, 'approved')}>
+                        Approve
+                      </button>
+                      <button className="admin-icon-btn danger" onClick={() => resolve(r.return_id, 'rejected')}>
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.78rem', color: '#8c827a' }}>
+                      {r.resolved_at ? new Date(r.resolved_at).toLocaleDateString() : '—'}
+                    </span>
+                  )}
+                </td>
+              </tr>
             ))
           )}
         </tbody>

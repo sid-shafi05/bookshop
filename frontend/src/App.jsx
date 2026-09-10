@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { api } from './api';
 import Navbar from './components/Navbar';
 import CartDrawer from './components/CartDrawer';
@@ -16,29 +17,50 @@ import HomePage from './components/HomePage';
 import AllBooks from './components/AllBooks';
 
 const AUTH_USER_KEY = 'bookstore_user';
-const VIEW_KEY = 'bookstore_view';
+
+// Fetches a single book based on the :bookId URL param, then renders BookDetails.
+function BookDetailsRoute({ user, onAddToCart, onAddToWishlist, showToast }) {
+  const { bookId } = useParams();
+  const navigate = useNavigate();
+  const [book, setBook] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setBook(null);
+    setNotFound(false);
+    api.getBook(bookId)
+      .then((data) => { if (active) setBook(data); })
+      .catch((err) => {
+        if (!active) return;
+        showToast(err.message || 'Failed to load book details');
+        setNotFound(true);
+      });
+    return () => { active = false; };
+  }, [bookId]);
+
+  if (notFound) return <Navigate to="/books" replace />;
+  if (!book) return <div className="home-loading">Loading book...</div>;
+
+  return (
+    <BookDetails
+      book={book}
+      customerId={user?.id}
+      onBack={() => navigate(-1)}
+      onAddToCart={onAddToCart}
+      onAddToWishlist={onAddToWishlist}
+    />
+  );
+}
 
 export default function App() {
-  const isDeliverymanSetupPage = window.location.pathname === '/deliveryman/setup';
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Navigation & View State
-  const [shopSection, setShopSection] = useState('home');
+  // Navigation/filter state that's shared between Navbar, HomePage, AllBooks
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [categories, setCategories] = useState(['All']);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('default');
-  const [page, setPage] = useState(1);
-  const [limit] = useState(12);
-
-  // Books Data State
-  const [books, setBooks] = useState([]);
-  const [filteredBooks, setFilteredBooks] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-
-  const [currentView, setCurrentView] = useState(() => {
-    const saved = sessionStorage.getItem(VIEW_KEY);
-    return saved === 'admin' || saved === 'orders' || saved === 'delivery' ? saved : 'shop';
-  });
 
   const [user, setUser] = useState(() => {
     const savedUser = sessionStorage.getItem(AUTH_USER_KEY);
@@ -54,7 +76,6 @@ export default function App() {
   const [newWishlistName, setNewWishlistName] = useState('');
   const [bookToSave, setBookToSave] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
-  const [loading, setLoading] = useState(true);
   const [authResolved, setAuthResolved] = useState(false);
 
   const [showCart, setShowCart] = useState(false);
@@ -65,7 +86,6 @@ export default function App() {
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [ordersInitialId, setOrdersInitialId] = useState(null);
-  const [selectedBook, setSelectedBook] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,9 +93,6 @@ export default function App() {
       .then((res) => {
         if (!isMounted) return;
         setUser(res.user);
-        if (res.user.role === 'admin') setCurrentView('admin');
-        else if (res.user.role === 'deliveryman') setCurrentView('delivery');
-        else setCurrentView('shop');
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
       })
       .catch(() => {
@@ -86,8 +103,6 @@ export default function App() {
       .finally(() => isMounted && setAuthResolved(true));
     return () => { isMounted = false; };
   }, []);
-
-  useEffect(() => { sessionStorage.setItem(VIEW_KEY, currentView); }, [currentView]);
 
   const loadCategories = async () => {
     try {
@@ -100,43 +115,7 @@ export default function App() {
     }
   };
 
-  const loadBooks = async () => {
-    try {
-      setLoading(true);
-      const res = await api.getBooks({ genre: selectedCategory, page, limit });
-      const bookRows = Array.isArray(res.data) ? res.data : [];
-      setBooks(bookRows);
-      setFilteredBooks(bookRows);
-      setPagination(res.pagination || { page, totalPages: 1, total: bookRows.length });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => { loadBooks(); }, [selectedCategory, page]);
-
-  useEffect(() => {
-    let result = [...books];
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter((b) => {
-        const titleMatch = Boolean(b?.title && String(b.title).toLowerCase().includes(q));
-        const authorMatch = Array.isArray(b?.authors)
-          ? b.authors.some(a => a && String(a).toLowerCase().includes(q))
-          : false;
-        return titleMatch || authorMatch;
-      });
-    }
-
-    if (sortBy === 'price-low') result.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
-    else if (sortBy === 'price-high') result.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
-    else result.sort((a, b) => (b.book_id || 0) - (a.book_id || 0));
-
-    setFilteredBooks(result);
-  }, [books, searchQuery, sortBy]);
 
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
 
@@ -181,18 +160,18 @@ export default function App() {
       if (isLoginMode) {
         const res = await api.login({ email: authForm.email, password: authForm.password });
         setUser(res.user);
-        if (res.user.role === 'admin') setCurrentView('admin');
-        else if (res.user.role === 'deliveryman') setCurrentView('delivery');
-        else setCurrentView('shop');
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
         showToast(`Welcome back, ${res.user.username}!`);
+        if (res.user.role === 'admin') navigate('/admin');
+        else if (res.user.role === 'deliveryman') navigate('/delivery');
+        else navigate('/');
       } else {
         const res = await api.signup(authForm);
         const registeredUser = res.user || { id: res.user_id, username: res.username, email: res.email, role: res.role };
         setUser(registeredUser);
-        setCurrentView('shop');
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(registeredUser));
         showToast('Account registered successfully!');
+        navigate('/');
       }
       setShowAuthModal(false);
       setAuthForm({ username: '', email: '', password: '' });
@@ -206,8 +185,7 @@ export default function App() {
     finally {
       setUser(null);
       sessionStorage.removeItem(AUTH_USER_KEY);
-      sessionStorage.removeItem(VIEW_KEY);
-      setCurrentView('shop');
+      navigate('/');
       showToast('Signed out successfully');
     }
   };
@@ -218,12 +196,11 @@ export default function App() {
     catch (e) { showToast(e.message || 'Error adding to cart'); }
   };
 
-  const handleOpenBook = async (bookId) => {
-    try { setSelectedBook(await api.getBook(bookId)); }
-    catch (err) { showToast(err.message || 'Failed to load book details'); }
-  };
+  const handleHeartClick = (book) => (user ? setBookToSave(book) : setShowAuthModal(true));
 
-  if (isDeliverymanSetupPage) return <DeliverymanSetup />;
+  // Deliveryman setup uses a plain query-string link from an email, so it's
+  // handled before the auth check / router below, exactly like before.
+  if (location.pathname === '/deliveryman/setup') return <DeliverymanSetup />;
   if (!authResolved) return <div className="auth-gate-loading">Checking your session...</div>;
 
   return (
@@ -236,9 +213,7 @@ export default function App() {
           setSelectedCategory={(category) => {
             setSelectedCategory(category);
             setSearchQuery('');
-            setPage(1);
-            setShopSection('all');
-            setCurrentView('shop');
+            navigate('/books');
           }}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -255,79 +230,108 @@ export default function App() {
             setIsLoginMode(true);
             setShowAuthModal(true);
           }}
-          onOpenOrders={() => user && setCurrentView('orders')}
+          onOpenOrders={() => user && navigate('/orders')}
           onSignOut={handleSignOut}
           onHome={() => {
             setSelectedCategory('All');
             setSearchQuery('');
-            setPage(1);
-            setShopSection('home');
-            setCurrentView('shop');
+            navigate('/');
           }}
           onBrowseBooks={() => {
             setSelectedCategory('All');
-            setSearchQuery('');
-            setPage(1);
-            setShopSection('all');
-            setCurrentView('shop');
+            navigate('/books');
           }}
         />
       )}
 
-      {user?.role === 'admin' ? (
-        <AdminDashboard user={user} onClose={handleSignOut} />
-      ) : user?.role === 'deliveryman' ? (
-        <DeliverymanDashboard user={user} onClose={handleSignOut} />
-      ) : currentView === 'orders' && user ? (
-        <OrdersView
-          customerId={user.id}
-          initialOrderId={ordersInitialId}
-          onCartChanged={() => refreshCart(user.id)}
-          onReviewSubmitted={loadBooks}
-          onClose={() => setCurrentView('shop')}
+      <Routes>
+        <Route
+          path="/admin"
+          element={user?.role === 'admin' ? <AdminDashboard user={user} onClose={handleSignOut} /> : <Navigate to="/" replace />}
         />
-      ) : selectedBook ? (
-        <BookDetails
-          book={selectedBook}
-          customerId={user?.id}
-          onBack={() => setSelectedBook(null)}
-          onAddToCart={handleAddToCart}
-          onAddToWishlist={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
+
+        <Route
+          path="/delivery"
+          element={user?.role === 'deliveryman' ? <DeliverymanDashboard user={user} onClose={handleSignOut} /> : <Navigate to="/" replace />}
         />
-      ) : shopSection === 'home' ? (
-        <HomePage
-          categories={categories}
-          onAddToCart={handleAddToCart}
-          onHeartClick={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
-          onOpenDetails={handleOpenBook}
-          onBrowseCategory={(category) => {
-            setSelectedCategory(category);
-            setSearchQuery('');
-            setPage(1);
-            setShopSection('all');
-          }}
-          onBrowseAll={() => {
-            setSelectedCategory('All');
-            setSearchQuery('');
-            setPage(1);
-            setShopSection('all');
-          }}
+
+        <Route
+          path="/orders"
+          element={
+            user?.role === 'customer' ? (
+              <OrdersView
+                customerId={user.id}
+                initialOrderId={ordersInitialId}
+                onCartChanged={() => refreshCart(user.id)}
+                onReviewSubmitted={() => {}}
+                onClose={() => navigate('/')}
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
         />
-      ) : (
-        <AllBooks
-          selectedCategory={selectedCategory}
-          setSelectedCategory={(category) => {
-            setSelectedCategory(category);
-            setPage(1);
-          }}
-          categories={categories}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onAddToCart={handleAddToCart}
-          onHeartClick={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
-          onOpenDetails={handleOpenBook}
+
+        <Route
+          path="/books/:bookId"
+          element={
+            <BookDetailsRoute
+              user={user}
+              onAddToCart={handleAddToCart}
+              onAddToWishlist={handleHeartClick}
+              showToast={showToast}
+            />
+          }
         />
-      )}
+
+        <Route
+          path="/books"
+          element={
+            user?.role === 'admin' ? <Navigate to="/admin" replace />
+            : user?.role === 'deliveryman' ? <Navigate to="/delivery" replace />
+            : (
+              <AllBooks
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                categories={categories}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                onAddToCart={handleAddToCart}
+                onHeartClick={handleHeartClick}
+                onOpenDetails={(bookId) => navigate(`/books/${bookId}`)}
+              />
+            )
+          }
+        />
+
+        <Route
+          path="/"
+          element={
+            user?.role === 'admin' ? <Navigate to="/admin" replace />
+            : user?.role === 'deliveryman' ? <Navigate to="/delivery" replace />
+            : (
+              <HomePage
+                categories={categories}
+                onAddToCart={handleAddToCart}
+                onHeartClick={handleHeartClick}
+                onOpenDetails={(bookId) => navigate(`/books/${bookId}`)}
+                onBrowseCategory={(category) => {
+                  setSelectedCategory(category);
+                  setSearchQuery('');
+                  navigate('/books');
+                }}
+                onBrowseAll={() => {
+                  setSelectedCategory('All');
+                  setSearchQuery('');
+                  navigate('/books');
+                }}
+              />
+            )
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       {user?.role === 'customer' && (
         <>
@@ -360,7 +364,7 @@ export default function App() {
               setShowCheckout(false);
               refreshCart(user.id);
               setOrdersInitialId(order.order_id);
-              setCurrentView('orders');
+              navigate('/orders');
             }}
           />
 

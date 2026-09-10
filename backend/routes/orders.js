@@ -216,11 +216,22 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    const returnRes = await pool.query('SELECT * FROM returns WHERE order_id = $1', [id]);
+    const deliveryRow = deliveryRes.rows[0];
+
+    let canReturn = false;
+    if (order.status === 'delivered' && deliveryRow?.delivery_date && returnRes.rows.length === 0) {
+      const daysSinceDelivery = (Date.now() - new Date(deliveryRow.delivery_date).getTime()) / (1000 * 60 * 60 * 24);
+      canReturn = daysSinceDelivery <= 3;
+    }
+
     res.json({
       order,
       items: itemsRes.rows,
-      delivery: deliveryRes.rows[0] || null,
-      can_review: order.status === 'delivered'
+      delivery: deliveryRow || null,
+      can_review: order.status === 'delivered',
+      can_return: canReturn,
+      return_request: returnRes.rows[0] || null
     });
   } catch (err) {
     console.error('Error fetching order detail:', err.message);
@@ -267,6 +278,79 @@ router.put('/:id/cancel', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Cancel order error:', err.message);
     res.status(500).json({ error: 'Failed to cancel order' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/:id/return', async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'Please provide a reason for the return' });
+  }
+
+  const ownership = await verifyOrderOwnership(id, req.userId);
+  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+  if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderRes = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
+    const order = orderRes.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.status !== 'delivered') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only delivered orders can be returned' });
+    }
+
+    const deliveryRes = await client.query(
+      'SELECT delivery_date FROM deliveries WHERE order_id = $1',
+      [id]
+    );
+    const deliveryDate = deliveryRes.rows[0]?.delivery_date;
+    if (!deliveryDate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Delivery date not found for this order' });
+    }
+
+    const daysSinceDelivery = (Date.now() - new Date(deliveryDate).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceDelivery > 3) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'The 3-day return window for this order has passed' });
+    }
+
+    const existing = await client.query('SELECT * FROM returns WHERE order_id = $1', [id]);
+    if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A return has already been requested for this order' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO returns (order_id, customer_id, reason)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [id, req.userId, reason.trim()]
+    );
+
+    await client.query(
+      `INSERT INTO notifications (user_id, text, topic)
+       SELECT admin_id, $1, 'return'
+       FROM admins`,
+      [`Return requested for Order #${id}.`]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Return request error:', err.message);
+    res.status(500).json({ error: 'Failed to submit return request' });
   } finally {
     client.release();
   }
