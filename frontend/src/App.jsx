@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from './api';
 import Navbar from './components/Navbar';
-import BookCard from './components/BookCard';
 import CartDrawer from './components/CartDrawer';
 import WishlistDrawer from './components/WishlistDrawer';
 import SaveWishlistModal from './components/SaveWishlistModal';
@@ -13,8 +12,8 @@ import CheckoutModal from './components/CheckoutModal';
 import OrdersView from './components/OrdersView';
 import BookDetails from './components/BookDetails';
 import './App.css';
-import Pagination from './components/Pagination';
-import CategoryCarousel from './components/CategoryCarousel';
+import HomePage from './components/HomePage';
+import AllBooks from './components/AllBooks';
 
 const AUTH_USER_KEY = 'bookstore_user';
 const VIEW_KEY = 'bookstore_view';
@@ -22,14 +21,18 @@ const VIEW_KEY = 'bookstore_view';
 export default function App() {
   const isDeliverymanSetupPage = window.location.pathname === '/deliveryman/setup';
 
-  const [books, setBooks] = useState([]);
-  const [filteredBooks, setFilteredBooks] = useState([]);
+  // Navigation & View State
+  const [shopSection, setShopSection] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [categories, setCategories] = useState(['All']);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('featured');
+  const [sortBy, setSortBy] = useState('default');
   const [page, setPage] = useState(1);
   const [limit] = useState(12);
+
+  // Books Data State
+  const [books, setBooks] = useState([]);
+  const [filteredBooks, setFilteredBooks] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
 
   const [currentView, setCurrentView] = useState(() => {
@@ -230,18 +233,44 @@ export default function App() {
       {(!user || user.role === 'customer') && (
         <Navbar
           selectedCategory={selectedCategory}
-          setSelectedCategory={(cat) => { setPage(1); setSelectedCategory(cat); setCurrentView('shop'); }}
+          setSelectedCategory={(category) => {
+            setSelectedCategory(category);
+            setSearchQuery('');
+            setPage(1);
+            setShopSection('all');
+            setCurrentView('shop');
+          }}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           categories={categories}
-          wishlistCount={wishlists.reduce((acc, curr) => acc + Number(curr.total_saved_books || 0), 0)}
+          wishlistCount={wishlists.reduce(
+            (acc, curr) => acc + Number(curr.total_saved_books || 0),
+            0
+          )}
           cartCount={cart.items ? cart.items.length : 0}
           user={user}
-          onOpenWishlist={() => user ? setShowWishlist(true) : setShowAuthModal(true)}
-          onOpenCart={() => user ? setShowCart(true) : setShowAuthModal(true)}
-          onOpenAuth={() => { setIsLoginMode(true); setShowAuthModal(true); }}
+          onOpenWishlist={() => (user ? setShowWishlist(true) : setShowAuthModal(true))}
+          onOpenCart={() => (user ? setShowCart(true) : setShowAuthModal(true))}
+          onOpenAuth={() => {
+            setIsLoginMode(true);
+            setShowAuthModal(true);
+          }}
           onOpenOrders={() => user && setCurrentView('orders')}
           onSignOut={handleSignOut}
+          onHome={() => {
+            setSelectedCategory('All');
+            setSearchQuery('');
+            setPage(1);
+            setShopSection('home');
+            setCurrentView('shop');
+          }}
+          onBrowseBooks={() => {
+            setSelectedCategory('All');
+            setSearchQuery('');
+            setPage(1);
+            setShopSection('all');
+            setCurrentView('shop');
+          }}
         />
       )}
 
@@ -263,54 +292,41 @@ export default function App() {
           customerId={user?.id}
           onBack={() => setSelectedBook(null)}
           onAddToCart={handleAddToCart}
-          onAddToWishlist={(book) => user ? setBookToSave(book) : setShowAuthModal(true)}
+          onAddToWishlist={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
+        />
+      ) : shopSection === 'home' ? (
+        <HomePage
+          categories={categories}
+          onAddToCart={handleAddToCart}
+          onHeartClick={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
+          onOpenDetails={handleOpenBook}
+          onBrowseCategory={(category) => {
+            setSelectedCategory(category);
+            setSearchQuery('');
+            setPage(1);
+            setShopSection('all');
+          }}
+          onBrowseAll={() => {
+            setSelectedCategory('All');
+            setSearchQuery('');
+            setPage(1);
+            setShopSection('all');
+          }}
         />
       ) : (
-<main className="catalog-wrapper">
-  <div className="catalog-toolbar">
-    <div>
-      <h2 className="section-heading">{selectedCategory === 'All' ? 'Books & Collections' : selectedCategory}</h2>
-      <span className="results-count">{pagination.total} items available</span>
-    </div>
-    <div className="sort-box">
-      <label>Sort:</label>
-      <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-        <option value="featured">Featured / Newest</option>
-        <option value="price-low">Price: Low to High</option>
-        <option value="price-high">Price: High to Low</option>
-      </select>
-    </div>
-  </div>
-
-  {selectedCategory === 'All' && searchQuery.trim() === '' ? (
-    categories.filter((c) => c !== 'All').map((cat) => (
-      <CategoryCarousel
-        key={cat}
-        category={cat}
-        onAddToCart={handleAddToCart}
-        onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)}
-        onOpenDetails={handleOpenBook}
-      />
-    ))
-  ) : loading ? (
-    <div className="empty-state">Loading books...</div>
-  ) : (
-    <>
-      <div className="book-grid">
-        {filteredBooks.map((b) => (
-          <BookCard
-            key={b.book_id}
-            book={b}
-            onAddToCart={handleAddToCart}
-            onHeartClick={(book) => user ? setBookToSave(book) : setShowAuthModal(true)}
-            onOpenDetails={handleOpenBook}
-          />
-        ))}
-      </div>
-      <Pagination page={pagination.page} totalPages={pagination.totalPages || 1} onPageChange={setPage} />
-    </>
-  )}
-</main>
+        <AllBooks
+          selectedCategory={selectedCategory}
+          setSelectedCategory={(category) => {
+            setSelectedCategory(category);
+            setPage(1);
+          }}
+          categories={categories}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onAddToCart={handleAddToCart}
+          onHeartClick={(book) => (user ? setBookToSave(book) : setShowAuthModal(true))}
+          onOpenDetails={handleOpenBook}
+        />
       )}
 
       {user?.role === 'customer' && (
@@ -319,9 +335,19 @@ export default function App() {
             isOpen={showCart}
             onClose={() => setShowCart(false)}
             cart={cart}
-            onUpdateQty={async (bid, qty) => { await api.updateCartQuantity({ customer_id: user.id, book_id: bid, updated_qty: qty }); refreshCart(user.id); }}
-            onRemoveItem={async (bid) => { await api.removeFromCart({ customer_id: user.id, book_id: bid }); refreshCart(user.id); }}
-            onCheckout={() => { if (!cart.items?.length) return showToast('Your cart is empty'); setShowCart(false); setShowCheckout(true); }}
+            onUpdateQty={async (bid, qty) => {
+              await api.updateCartQuantity({ customer_id: user.id, book_id: bid, updated_qty: qty });
+              refreshCart(user.id);
+            }}
+            onRemoveItem={async (bid) => {
+              await api.removeFromCart({ customer_id: user.id, book_id: bid });
+              refreshCart(user.id);
+            }}
+            onCheckout={() => {
+              if (!cart.items?.length) return showToast('Your cart is empty');
+              setShowCart(false);
+              setShowCheckout(true);
+            }}
           />
 
           <CheckoutModal
@@ -343,13 +369,28 @@ export default function App() {
             onClose={() => setShowWishlist(false)}
             wishlists={wishlists}
             selectedWishlistId={selectedWishlistId}
-            onSelectWishlist={(wid) => { setSelectedWishlistId(wid); loadWishlistBooks(wid); }}
+            onSelectWishlist={(wid) => {
+              setSelectedWishlistId(wid);
+              loadWishlistBooks(wid);
+            }}
             books={currentWishlistBooks}
             onAddToCart={handleAddToCart}
-            onRemoveItem={async (wid, bid) => { await api.removeFromWishlist({ wishlist_id: wid, book_id: bid }); refreshWishlists(user.id); }}
-            onCreateList={async (name) => { await api.createWishlist({ customer_id: user.id, wishlist_name: name }); refreshWishlists(user.id); }}
-            onDeleteList={async (wid) => { await api.deleteWishlist(wid); refreshWishlists(user.id); }}
-            onRenameList={async (wid, newName) => { await api.renameWishlist({ wishlist_id: wid, new_name: newName, customer_id: user.id }); refreshWishlists(user.id); }}
+            onRemoveItem={async (wid, bid) => {
+              await api.removeFromWishlist({ wishlist_id: wid, book_id: bid });
+              refreshWishlists(user.id);
+            }}
+            onCreateList={async (name) => {
+              await api.createWishlist({ customer_id: user.id, wishlist_name: name });
+              refreshWishlists(user.id);
+            }}
+            onDeleteList={async (wid) => {
+              await api.deleteWishlist(wid);
+              refreshWishlists(user.id);
+            }}
+            onRenameList={async (wid, newName) => {
+              await api.renameWishlist({ wishlist_id: wid, new_name: newName, customer_id: user.id });
+              refreshWishlists(user.id);
+            }}
             onSignOut={handleSignOut}
           />
 
