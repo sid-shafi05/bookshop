@@ -2204,3 +2204,314 @@ body {
 .carousel-arrow:hover {
   background: #f5f5f5;
 }
+
+
+
+/* =========================================================
+   NOTIFICATIONS
+   ========================================================= */
+
+.notification-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Bell button */
+.notification-trigger {
+  position: relative;
+  width: 42px;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: none;
+  background: transparent;
+
+  cursor: pointer;
+  border-radius: 50%;
+
+  transition: background-color 0.2s ease;
+}
+
+.notification-trigger:hover,
+.notification-trigger.active {
+  background-color: #f1eee8;
+}
+
+.notification-bell {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Red unread counter */
+.notification-badge {
+  position: absolute;
+
+  top: 1px;
+  right: 0px;
+
+  min-width: 18px;
+  height: 18px;
+
+  padding: 0 5px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background-color: #a83232;
+  color: white;
+
+  border-radius: 10px;
+
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+
+  border: 2px solid #ffffff;
+}
+
+/* Dropdown */
+.notification-dropdown {
+  position: absolute;
+
+  top: calc(100% + 12px);
+  right: -70px;
+
+  width: 380px;
+  max-width: calc(100vw - 30px);
+
+  background: #fbf9f4;
+
+  border: 1px solid #ded8cf;
+  border-radius: 8px;
+
+  overflow: hidden;
+
+  z-index: 1500;
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Small arrow above dropdown */
+.notification-dropdown::before {
+  content: '';
+
+  position: absolute;
+
+  top: -7px;
+  right: 82px;
+
+  width: 12px;
+  height: 12px;
+
+  background: #fbf9f4;
+
+  border-left: 1px solid #ded8cf;
+  border-top: 1px solid #ded8cf;
+
+  transform: rotate(45deg);
+}
+
+/* Header */
+.notification-header {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 16px 18px;
+
+  background: #ffffff;
+
+  border-bottom: 1px solid #e6e0d8;
+}
+
+.notification-header h3 {
+  margin: 0;
+
+  font-family: Georgia, serif;
+
+  font-size: 1.05rem;
+  color: #1a2e40;
+}
+
+.notification-header span {
+  display: block;
+
+  margin-top: 3px;
+
+  font-size: 0.72rem;
+  color: #8a8178;
+}
+
+.mark-all-read-btn {
+  border: none;
+  background: transparent;
+
+  color: #1a2e40;
+
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  padding: 5px;
+}
+
+.mark-all-read-btn:hover {
+  text-decoration: underline;
+}
+
+/* Notification list */
+.notification-list {
+  max-height: 420px;
+
+  overflow-y: auto;
+}
+
+/* Individual notification */
+.notification-item {
+  width: 100%;
+
+  display: flex;
+
+  border: none;
+  border-bottom: 1px solid #ebe6df;
+
+  background: transparent;
+
+  text-align: left;
+
+  padding: 14px 16px;
+
+  cursor: pointer;
+
+  transition: background-color 0.15s ease;
+}
+
+.notification-item:hover {
+  background-color: #f3f0ea;
+}
+
+.notification-item.unread {
+  background-color: #f6f3ed;
+}
+
+.notification-item.unread:hover {
+  background-color: #eeeae2;
+}
+
+/* Dot area */
+.notification-dot-area {
+  width: 16px;
+
+  flex-shrink: 0;
+
+  padding-top: 5px;
+}
+
+.notification-unread-dot {
+  display: block;
+
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background-color: #a83232;
+}
+
+/* Content */
+.notification-content {
+  min-width: 0;
+
+  flex: 1;
+}
+
+.notification-title {
+  color: #1a2e40;
+
+  font-size: 0.88rem;
+  font-weight: 700;
+
+  line-height: 1.3;
+
+  margin-bottom: 4px;
+}
+
+.notification-message {
+  color: #5f5953;
+
+  font-size: 0.8rem;
+
+  line-height: 1.45;
+
+  margin-bottom: 5px;
+}
+
+.notification-time {
+  color: #948b82;
+
+  font-size: 0.7rem;
+}
+
+/* Empty state */
+.notification-empty {
+  padding: 45px 20px;
+
+  text-align: center;
+
+  color: #817870;
+}
+
+.notification-empty-icon {
+  font-size: 30px;
+
+  opacity: 0.55;
+
+  margin-bottom: 10px;
+}
+
+.notification-empty strong {
+  display: block;
+
+  color: #1a2e40;
+
+  font-family: Georgia, serif;
+
+  font-size: 0.95rem;
+}
+
+.notification-empty p {
+  margin: 5px 0 0;
+
+  font-size: 0.78rem;
+}
+
+/* Mobile */
+@media (max-width: 750px) {
+  .notification-dropdown {
+    position: fixed;
+
+    top: 70px;
+    right: 15px;
+    left: 15px;
+
+    width: auto;
+    max-width: none;
+  }
+
+  .notification-dropdown::before {
+    display: none;
+  }
+
+  .notification-list {
+    max-height: calc(100vh - 140px);
+  }
+}
+
