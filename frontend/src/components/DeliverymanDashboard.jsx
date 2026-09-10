@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
-
+import NotificationBell from './NotificationBell';
 const ACTIVE_STATUSES = ['picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed'];
 
 function formatAddress(o) {
@@ -24,6 +24,7 @@ export default function DeliverymanDashboard({ onClose, user }) {
       <div className="admin-header-row">
         <h2>Delivery Dashboard</h2>
         <div className="admin-profile-actions">
+           <NotificationBell user={user} />
           <div className="admin-profile">
             <strong>{user?.username}</strong>
             <span>{user?.email}</span>

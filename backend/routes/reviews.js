@@ -67,6 +67,12 @@ router.post('/', async (req, res) => {
   if (!customer_id || !book_id || !rating) {
     return res.status(400).json({ error: 'customer_id, book_id and rating are required' });
   }
+  if (Number(customer_id) !== req.userId) {
+    return res.status(403).json({ error: 'Access denied: cannot review on behalf of another user' });
+  }
+  if (!customer_id || !book_id || !rating) {
+    return res.status(400).json({ error: 'customer_id, book_id and rating are required' });
+  }
   if (rating < 1 || rating > 5) {
     return res.status(400).json({ error: 'Rating must be between 1 and 5' });
   }

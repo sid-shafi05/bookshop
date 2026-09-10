@@ -2,7 +2,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
-
+import NotificationBell from './NotificationBell';
 const EMPTY_FORM = {
   title: '', isbn: '', price: '', stock_quantity: '', publication_year: '',
   category_id: '',
@@ -33,6 +33,7 @@ export default function AdminDashboard({ onClose, user }) {
       <div className="admin-header-row">
         <h2>Admin Dashboard</h2>
         <div className="admin-profile-actions">
+           <NotificationBell user={user} />
           <div className="admin-profile">
             <strong>{user?.username}</strong>
             <span>{user?.email}</span>

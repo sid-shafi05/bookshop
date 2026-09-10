@@ -124,4 +124,9 @@ export const api = {
   checkReviewEligibility: (customerId, bookId) => request(`/reviews/eligibility/${customerId}/${bookId}`),
   submitReview: ({ customer_id, book_id, rating, comment }) =>
     request('/reviews', { method: 'POST', body: JSON.stringify({ customer_id, book_id, rating, comment }) }),
+
+  // Notifications
+  getNotifications: () => request('/notifications'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'PUT' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'PUT' }),
 };
