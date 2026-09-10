@@ -1,10 +1,7 @@
-// backend/routes/books.js
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 
-// Master reusable query for fetching book details with publisher, authors,
-// categories, and a live-computed average rating from the reviews table.
 const BASE_SELECT = `
   SELECT
     b.book_id,
@@ -39,51 +36,61 @@ const BASE_SELECT = `
   LEFT JOIN publishers p ON p.publisher_id = b.publisher_id
 `;
 
-// ====================================================================
-// 1. GET /books -> Main catalog (Supports ?genre=, ?limit=, ?offset=)
-// ====================================================================
+// GET /books -> public catalog with pagination and dynamic category filter
 router.get('/', async (req, res) => {
-  const { genre, limit = 50, offset = 0 } = req.query;
+  const { genre } = req.query;
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
+  const offset = (page - 1) * limit;
 
   try {
     const params = [];
-    let query = BASE_SELECT;
+    let whereClause = '';
 
     if (genre && genre !== 'All') {
       params.push(genre);
-      query += ` WHERE EXISTS (
+      whereClause = ` WHERE EXISTS (
         SELECT 1 FROM book_categories bc
         JOIN categories c ON c.category_id = bc.category_id
         WHERE bc.book_id = b.book_id AND c.category_name = $${params.length}
       )`;
     }
 
-    query += ' ORDER BY b.book_id ASC';
+    const countQuery = `
+      SELECT COUNT(*)::int AS total
+      FROM books b
+      ${whereClause}
+    `;
+    const countResult = await pool.query(countQuery, params);
+    const total = countResult.rows[0]?.total || 0;
 
-    params.push(Number(limit));
+    let query = `${BASE_SELECT} ${whereClause} ORDER BY b.book_id ASC`;
+    params.push(limit);
     query += ` LIMIT $${params.length}`;
-    params.push(Number(offset));
+    params.push(offset);
     query += ` OFFSET $${params.length}`;
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+
+    res.json({
+      data: result.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error('Error fetching books:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// ====================================================================
-// 2. GET /books/recent -> Recent/New arrivals
-// ====================================================================
 router.get('/recent', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 8, 50);
-
   try {
-    const result = await pool.query(
-      `${BASE_SELECT} ORDER BY b.book_id DESC LIMIT $1`,
-      [limit]
-    );
+    const result = await pool.query(`${BASE_SELECT} ORDER BY b.book_id DESC LIMIT $1`, [limit]);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching recent books:', err.message);
@@ -91,9 +98,7 @@ router.get('/recent', async (req, res) => {
   }
 });
 
-// ====================================================================
-// 3. GET /books/genres -> All categories with book count
-// ====================================================================
+// dynamic category dropdown source
 router.get('/genres', async (req, res) => {
   try {
     const result = await pool.query(
@@ -110,9 +115,6 @@ router.get('/genres', async (req, res) => {
   }
 });
 
-// ====================================================================
-// 4. GET /books/genre/:genre -> Books by specific genre
-// ====================================================================
 router.get('/genre/:genre', async (req, res) => {
   const { genre } = req.params;
   const limit = Math.min(Number(req.query.limit) || 24, 100);
@@ -135,15 +137,10 @@ router.get('/genre/:genre', async (req, res) => {
   }
 });
 
-// ====================================================================
-// 5. GET /books/:id -> Single book detail page
-// ====================================================================
 router.get('/:id', async (req, res) => {
   try {
     const result = await pool.query(`${BASE_SELECT} WHERE b.book_id = $1`, [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Book not found' });
-    }
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Book not found' });
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error fetching book by ID:', err.message);

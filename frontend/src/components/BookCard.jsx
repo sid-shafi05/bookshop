@@ -1,7 +1,7 @@
 // src/components/BookCard.jsx
 
 function StarRating({ rating, count }) {
-  const rounded = Math.round(Number(rating) * 2) / 2; // nearest half-star
+  const rounded = Math.round(Number(rating) * 2) / 2;
   const full = Math.floor(rounded);
   const half = rounded - full === 0.5;
   const empty = 5 - full - (half ? 1 : 0);
@@ -31,20 +31,13 @@ function StarRating({ rating, count }) {
 export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetails }) {
   const genreText = Array.isArray(book.categories) ? book.categories.join(' • ') : (book.category_name || 'Book');
   const authorText = Array.isArray(book.authors) ? book.authors.join(', ') : (book.author_name || 'Various Authors');
-
-  // Only show a real photo if cover_url is set and isn't the generic
-  // schema default placeholder path — otherwise fall back to the art box.
   const hasRealCover = book.cover_url && book.cover_url !== '/images/placeholder-book.jpg';
 
   return (
-    <div className="book-card" onClick={() => onOpenDetails(book.book_id)} role="button" tabIndex={0}>
-      <div className="cover-wrapper">
+    <div className="book-card book-card-sm" onClick={() => onOpenDetails(book.book_id)} role="button" tabIndex={0}>
+      <div className="cover-wrapper cover-wrapper-sm">
         {hasRealCover ? (
-          <img
-            className="book-cover-photo"
-            src={`http://localhost:3000${book.cover_url}`}
-            alt={book.title}
-          />
+          <img className="book-cover-photo" src={`http://localhost:3000${book.cover_url}`} alt={book.title} />
         ) : (
           <div className="book-cover-art">
             <span className="art-icon">📖</span>
@@ -60,9 +53,9 @@ export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetail
         </button>
       </div>
 
-      <div className="book-meta">
+      <div className="book-meta book-meta-sm">
         <span className="genre-label">{genreText}</span>
-        <h3 className="title-text" title={book.title}>{book.title}</h3>
+        <h3 className="title-text title-clamp" title={book.title}>{book.title}</h3>
         <p className="author-text">by {authorText}</p>
 
         <StarRating rating={book.average_rating} count={book.review_count} />

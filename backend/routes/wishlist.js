@@ -8,12 +8,10 @@ router.use(verifyToken);
 
 
 //show all the wishlists of a customer(GET)
-//shows an icon(various book cards as the icon) , and beneath it, shows
-//the name and book count of that wishlist(barnes and noble)
 router.get('/customer/:customer_id',async(req,res)=>{
     const{customer_id}=req.params;
          //check ownership
-  if (Number(customer_id) !== req.user.userId) {
+  if (Number(customer_id) !== req.userId) {
     return res.status(403).json({ error: 'Access denied: not your cart' });
   }
 
@@ -47,9 +45,6 @@ router.get('/customer/:customer_id',async(req,res)=>{
 );
 
 //show all the books of a particular wishlist(GET)
-//just shows the list of all books in it 
-//each book: title,author,rating(not yet)
-
 router.get('/:wishlist_id',async(req,res)=>{
 
     const{wishlist_id}=req.params;
@@ -64,7 +59,7 @@ router.get('/:wishlist_id',async(req,res)=>{
       return res.status(404).json({ error: 'Wishlist not found' });
     }
 
-    if (Number(ownerCheck.rows[0].customer_id) !== req.user.userId) {
+    if (Number(ownerCheck.rows[0].customer_id) !== req.userId) {
       return res.status(403).json({ error: 'Access denied: not your wishlist' });
     }
        const query=`
@@ -95,11 +90,10 @@ router.get('/:wishlist_id',async(req,res)=>{
 
 
 //create (POST)a custom wishlist 
-//in wishlist table, wishlist_id is auto incrementing
 router.post('/create',async(req,res)=>{
     const{customer_id,wishlist_name}=req.body;
              //check ownership
-  if (Number(customer_id) !== req.user.userId) {
+  if (Number(customer_id) !== req.userId) {
     return res.status(403).json({ error: 'Access denied: not your cart' });
   }
 
@@ -109,7 +103,6 @@ router.post('/create',async(req,res)=>{
     const wishlist_name_clean=wishlist_name.trim();
 
     try{
- //See if a list with this name already exists for this customer
         const checkQuery = `
             SELECT wishlist_id 
             FROM wishlists 
@@ -122,7 +115,7 @@ router.post('/create',async(req,res)=>{
                 error: `You already have a wishlist named "${wishlist_name_clean}". Please choose a different name.` 
             });
         }
-//now create the new one
+
         const insert_query=`
            INSERT INTO wishlists(customer_id,wishlist_name)
            VALUES($1,$2)
@@ -142,9 +135,7 @@ router.post('/create',async(req,res)=>{
 //save(POST) books in a wishlist
 router.post('/add',async(req,res)=>{
 const{book_id,wishlist_id}=req.body;
-//checks if the book is already in this specific wishlist by using On CONFLICT
 try{
-    // verify ownership check if wishlist belongs to logged-in user
     const ownerCheck = await pool.query(
       'SELECT customer_id FROM wishlists WHERE wishlist_id = $1',
       [wishlist_id]
@@ -154,7 +145,7 @@ try{
       return res.status(404).json({ error: 'Wishlist not found' });
     }
 
-    if (Number(ownerCheck.rows[0].customer_id) !== req.user.userId) {
+    if (Number(ownerCheck.rows[0].customer_id) !== req.userId) {
       return res.status(403).json({ error: 'Access denied: not your wishlist' });
     }
 
@@ -189,7 +180,6 @@ try{
 router.delete('/remove_book',async(req,res)=>{
     const{book_id,wishlist_id}=req.body;
     try{
-    // verify ownership check if wishlist belongs to logged-in user
     const ownerCheck = await pool.query(
       'SELECT customer_id FROM wishlists WHERE wishlist_id = $1',
       [wishlist_id]
@@ -199,7 +189,7 @@ router.delete('/remove_book',async(req,res)=>{
       return res.status(404).json({ error: 'Wishlist not found' });
     }
 
-    if (Number(ownerCheck.rows[0].customer_id) !== req.user.userId) {
+    if (Number(ownerCheck.rows[0].customer_id) !== req.userId) {
       return res.status(403).json({ error: 'Access denied: not your wishlist' });
     }
 
@@ -216,15 +206,9 @@ router.delete('/remove_book',async(req,res)=>{
 });
 
 //delete a specific wishlist from the customer's profile
-//when a specific wishlist is being deleted, all its items must also be deleted
-//which means the effect should be passed on to/cascaded to its rows in the wishlist_items table 
-// from the table -> FOREIGN KEY (wishlist_id) REFERENCES wishlists(wishlist_id) ON DELETE CASCADE,
-
 router.delete('/:wishlist_id',async(req,res)=>{
 const{wishlist_id}=req.params;
     try {
-    //the default 'My Wishlist" cannot be deleted-either delete icon is absent/if there is an icon, deleting is forbidden
-    //standard behaviour of many famous bookstores 
         const check = await pool.query(
             'SELECT wishlist_name, customer_id FROM wishlists WHERE wishlist_id = $1',
             [wishlist_id]
@@ -241,11 +225,6 @@ const{wishlist_id}=req.params;
             return res.status(400).json({ error: 'The default "My Wishlist" cannot be deleted.' });
         }
 
-
-
-//if it is custom, delete it
-
-        // ON DELETE CASCADE automatically deletes its wishlist_items too!
         await pool.query('DELETE FROM wishlists WHERE wishlist_id = $1', [wishlist_id]);
         res.json({ message: 'Wishlist deleted successfully' });
     } catch (err) {
@@ -258,7 +237,7 @@ const{wishlist_id}=req.params;
 router.put('/rename', async (req, res) => {
     const { wishlist_id, new_name, customer_id } = req.body;
 //ownership check
-  if (Number(customer_id) !== req.user.userId) {
+  if (Number(customer_id) !== req.userId) {
     return res.status(403).json({ error: 'Access denied: cannot rename another user\'s wishlist' });
   }
     if (!new_name || new_name.trim() === '') {
@@ -278,12 +257,10 @@ router.put('/rename', async (req, res) => {
             return res.status(403).json({ error: 'Access denied: not your wishlist' });
         }
 
-        // Prevent renaming the default 'My Wishlist'
         if (check.rows[0].wishlist_name === 'My Wishlist') {
             return res.status(400).json({ error: 'The default "My Wishlist" cannot be renamed.' });
         }
 
-        // Check if name conflicts with another list
         const dupCheck = await pool.query(
             'SELECT wishlist_id FROM wishlists WHERE customer_id = $1 AND wishlist_name = $2 AND wishlist_id != $3',
             [customer_id, cleanName, wishlist_id]

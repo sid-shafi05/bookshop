@@ -320,3 +320,106 @@ CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_book_authors_author ON book_authors(author_id);
 CREATE INDEX idx_book_categories_category ON book_categories(category_id);
 CREATE INDEX idx_deliveries_order ON deliveries(order_id);
+
+
+
+
+ALTER TABLE deliverymen ADD COLUMN user_id INTEGER UNIQUE REFERENCES users(user_id);
+
+ALTER TABLE users DROP CONSTRAINT users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('customer','admin','deliveryman'));
+
+ALTER TABLE deliveries DROP CONSTRAINT delivery_status_check;
+ALTER TABLE deliveries ADD CONSTRAINT delivery_status_check
+  CHECK (status IN ('pending_acceptance','preparing','picked_up',
+                     'in_transit','out_for_delivery','delivered',
+                     'failed','declined'));
+
+
+-- 1) Ensure users table can support deliveryman role
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'customer';
+
+-- If you already have role, skip this block.
+-- Optional role constraint:
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_role_check'
+  ) THEN
+    ALTER TABLE users
+    ADD CONSTRAINT users_role_check
+    CHECK (role IN ('customer', 'admin', 'deliveryman'));
+  END IF;
+END$$;
+
+-- 2) Deliveryman profile table
+CREATE TABLE IF NOT EXISTS deliverymen (
+  id SERIAL PRIMARY KEY,
+  user_id INT UNIQUE REFERENCES users(id) ON DELETE SET NULL,
+  full_name VARCHAR(120) NOT NULL,
+  email VARCHAR(160) UNIQUE NOT NULL,
+  phone VARCHAR(30),
+  is_active BOOLEAN DEFAULT TRUE,
+  invited_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 3) Invite token table (first-time account setup)
+CREATE TABLE IF NOT EXISTS deliveryman_invites (
+  id SERIAL PRIMARY KEY,
+  deliveryman_id INT REFERENCES deliverymen(id) ON DELETE CASCADE,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 4) Orders: assignment + delivery status
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS assigned_deliveryman_id INT REFERENCES deliverymen(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(30) DEFAULT 'unassigned';
+-- delivery_status: unassigned, assigned, accepted, out_for_delivery, delivered, rejected
+
+-- 5) In-app notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(200) NOT NULL,
+  message TEXT NOT NULL,
+  type VARCHAR(50) DEFAULT 'general',
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 6) Categories table for dynamic dropdown
+CREATE TABLE IF NOT EXISTS categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- If books has a text category column, keep compatibility:
+-- Optional: ensure books.category exists
+ALTER TABLE books
+ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+
+-- Seed categories from existing books (if any)
+INSERT INTO categories(name)
+SELECT DISTINCT category
+FROM books
+WHERE category IS NOT NULL AND TRIM(category) <> ''
+ON CONFLICT (name) DO NOTHING;
+
+
+ALTER TABLE deliveries
+  ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+  ALTER TABLE deliverymen
+  ADD COLUMN invite_token VARCHAR(64) UNIQUE,
+  ADD COLUMN invite_token_expires TIMESTAMP;

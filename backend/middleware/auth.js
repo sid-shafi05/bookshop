@@ -1,22 +1,43 @@
 const jwt = require('jsonwebtoken');
+const pool = require('../db');
 
 // Verify token middleware
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
+  let token = null;
+
   const authHeader = req.headers['authorization'];
-  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.cookies && req.cookies.bookstore_token) {
+    token = req.cookies.bookstore_token;
+  }
 
-  const token = authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Malformed token' });
+  if (!token) return res.status(401).json({ error: 'No token provided' });
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      console.log('JWT VERIFY ERROR:', err.name, err.message);
-      return res.status(401).json({ error: 'Failed to authenticate token' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // blacklist check (optional table)
+    try {
+      const blacklisted = await pool.query(
+        'SELECT 1 FROM token_blacklist WHERE token = $1 LIMIT 1',
+        [token]
+      );
+      if (blacklisted.rows.length > 0) {
+        return res.status(401).json({ error: 'Token has been invalidated' });
+      }
+    } catch (e) {
+      // ignore if table doesn't exist yet
     }
+
     req.userId = decoded.userId;
     req.role = decoded.role;
+    req.token = token;
     next();
-  });
+  } catch (err) {
+    console.log('JWT VERIFY ERROR:', err.name, err.message);
+    return res.status(401).json({ error: 'Failed to authenticate token' });
+  }
 };
 
 // Require admin role
@@ -27,7 +48,7 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-//Require customer role
+// Require customer role
 const requireCustomer = (req, res, next) => {
   if (req.role !== 'customer') {
     return res.status(403).json({ error: 'Access denied' });
@@ -35,7 +56,7 @@ const requireCustomer = (req, res, next) => {
   next();
 };
 
-//Require deliveryman role
+// Require deliveryman role
 const requireDeliveryman = (req, res, next) => {
   if (req.role !== 'deliveryman') {
     return res.status(403).json({ error: 'Access denied' });
@@ -43,4 +64,4 @@ const requireDeliveryman = (req, res, next) => {
   next();
 };
 
-module.exports = { verifyToken, requireAdmin };
+module.exports = { verifyToken, requireAdmin, requireCustomer, requireDeliveryman };

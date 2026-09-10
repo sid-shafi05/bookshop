@@ -2,92 +2,90 @@
 const API_URL = 'http://localhost:3000';
 
 async function request(path, options = {}) {
-const res = await fetch(`${API_URL}${path}`, {
-credentials: 'include',
-headers: {
-'Content-Type': 'application/json',
-...(options.headers || {}),
+  const res = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
     },
-...options,
+    ...options,
   });
 
-const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
 
-if (!res.ok) {
-throw new Error(data.error || `Request failed with status ${res.status}`);
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed with status ${res.status}`);
   }
-return data;
+  return data;
 }
 
-// Same idea as request(), but for endpoints that receive a file
-// (multipart/form-data instead of JSON). We deliberately do NOT set
-// Content-Type here — the browser builds its own multipart boundary
-// based on the FormData contents, and setting it manually breaks that.
 async function requestFormData(path, formData, method = 'POST') {
-const res = await fetch(`${API_URL}${path}`, {
-method,
-credentials: 'include',
-headers: {
-    },
-body: formData,
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    credentials: 'include',
+    headers: {},
+    body: formData,
   });
 
-const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
 
-if (!res.ok) {
-throw new Error(data.error || `Request failed with status ${res.status}`);
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed with status ${res.status}`);
   }
-return data;
+  return data;
 }
 
 export const api = {
-//Admin
-getAdminBooks: () => request('/admin/books'),
+  // Admin
+  getAdminBooks: () => request('/admin/books'),
   getAdminCategories: () => request('/admin/categories'),
-// bookFormData is a FormData object built in AdminDashboard.jsx (title, price,
-// stock_quantity, publication_year, isbn, and optionally a cover_image file)
-createBook: (bookFormData) => requestFormData('/admin/books', bookFormData, 'POST'),
-updateBook: (bookId, bookFormData) => requestFormData(`/admin/books/${bookId}`, bookFormData, 'PUT'),
-deleteBook: (bookId) => request(`/admin/books/${bookId}`, { method: 'DELETE' }),
-getAdminUsers: () => request('/admin/users'),
-createAdmin: (data) => request('/admin/admins', { method: 'POST', body: JSON.stringify(data) }),
-getAdminOrders: () => request('/admin/orders'),
-getAdminOrderDetail: (orderId) => request(`/admin/order-details/${orderId}`),
-updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
-// Delivery assignment (admin)
-getDeliverymen: () => request('/admin/deliverymen'),
-createDeliveryman: (data) => request('/admin/deliverymen', { method: 'POST', body: JSON.stringify(data) }),
-updateDeliveryman: (id, data) => request(`/admin/deliverymen/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-deleteDeliveryman: (id) => request(`/admin/deliverymen/${id}`, { method: 'DELETE' }),
-shipOrder: (orderId, { deliveryman_id, shipping_method, tracking_number }) =>
-  request(`/admin/orders/${orderId}/ship`, { method: 'POST', body: JSON.stringify({ deliveryman_id, shipping_method, tracking_number }) }),
-updateDeliveryStatus: (deliveryId, status) =>
-  request(`/admin/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  createBook: (bookFormData) => requestFormData('/admin/books', bookFormData, 'POST'),
+  updateBook: (bookId, bookFormData) => requestFormData(`/admin/books/${bookId}`, bookFormData, 'PUT'),
+  deleteBook: (bookId) => request(`/admin/books/${bookId}`, { method: 'DELETE' }),
+  getAdminUsers: () => request('/admin/users'),
+  createAdmin: (data) => request('/admin/admins', { method: 'POST', body: JSON.stringify(data) }),
+  getAdminOrders: () => request('/admin/orders'),
+  getAdminOrderDetail: (orderId) => request(`/admin/order-details/${orderId}`),
+  updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
 
-// Deliveryman (self-service dashboard — logged in as the rider himself)
-getDeliverymanProfile: () => request('/deliveryman/me'),
-getDeliveryRequests: () => request('/deliveryman/requests'),
-getMyActiveDeliveries: () => request('/deliveryman/deliveries'),
-getMyDeliveryHistory: () => request('/deliveryman/deliveries/history'),
-getMyDeliveryDetail: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}`),
-acceptDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/accept`, { method: 'POST' }),
-declineDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/decline`, { method: 'POST' }),
-updateMyDeliveryStatus: (deliveryId, status) =>
-  request(`/deliveryman/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  // Delivery assignment (admin)
+  getDeliverymen: () => request('/admin/deliverymen'),
+  createDeliveryman: (data) => request('/admin/deliverymen', { method: 'POST', body: JSON.stringify(data) }),
+  updateDeliveryman: (id, data) => request(`/admin/deliverymen/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDeliveryman: (id) => request(`/admin/deliverymen/${id}`, { method: 'DELETE' }),
+  shipOrder: (orderId, { deliveryman_id, shipping_method, tracking_number }) =>
+    request(`/admin/orders/${orderId}/ship`, { method: 'POST', body: JSON.stringify({ deliveryman_id, shipping_method, tracking_number }) }),
+  updateDeliveryStatus: (deliveryId, status) =>
+    request(`/admin/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
-// Books & Catalog
-getBooks: () => request('/books'),
-getBook: (bookId) => request(`/books/${bookId}`),
-// Auth
-signup: ({ username, email, password }) =>
-request('/auth/signup', { method: 'POST', body: JSON.stringify({ username, email, password }) }),
-login: ({ email, password }) =>
-request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-getCurrentUser: () => request('/auth/me'),
-logout: () =>
-    request('/auth/logout', { method: 'POST' }),
+  // Deliveryman dashboard
+  getDeliverymanProfile: () => request('/deliveryman/me'),
+  getDeliveryRequests: () => request('/deliveryman/requests'),
+  getMyActiveDeliveries: () => request('/deliveryman/deliveries'),
+  getMyDeliveryHistory: () => request('/deliveryman/deliveries/history'),
+  getMyDeliveryDetail: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}`),
+  acceptDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/accept`, { method: 'POST' }),
+  declineDelivery: (deliveryId) => request(`/deliveryman/deliveries/${deliveryId}/decline`, { method: 'POST' }),
+  updateMyDeliveryStatus: (deliveryId, status) =>
+    request(`/deliveryman/deliveries/${deliveryId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
-  // Cart (Protected with Token!)
+  // Books & Catalog
+  getBooks: ({ genre = 'All', page = 1, limit = 12 } = {}) =>
+    request(`/books?genre=${encodeURIComponent(genre)}&page=${page}&limit=${limit}`),
+  getBook: (bookId) => request(`/books/${bookId}`),
+  getGenres: () => request('/books/genres'),
+
+  // Auth
+  signup: ({ username, email, password }) =>
+    request('/auth/signup', { method: 'POST', body: JSON.stringify({ username, email, password }) }),
+  login: ({ email, password }) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  getCurrentUser: () => request('/auth/me'),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  completeDeliverymanSetup: ({ token, username, password }) =>
+    request('/auth/deliveryman-setup', { method: 'POST', body: JSON.stringify({ token, username, password }) }),
+
+  // Cart
   getCart: (customerId) => request(`/cart/${customerId}`),
   addToCart: ({ customer_id, book_id, quantity = 1 }) =>
     request('/cart/add', { method: 'POST', body: JSON.stringify({ customer_id, book_id, quantity }) }),
@@ -96,8 +94,7 @@ logout: () =>
   removeFromCart: ({ customer_id, book_id }) =>
     request('/cart/remove', { method: 'DELETE', body: JSON.stringify({ customer_id, book_id }) }),
 
-
-  // Wishlist (Protected with Token!)
+  // Wishlist
   getCustomerWishlists: (customerId) => request(`/wishlist/customer/${customerId}`),
   getWishlistBooks: (wishlistId) => request(`/wishlist/${wishlistId}`),
   createWishlist: ({ customer_id, wishlist_name }) =>
@@ -110,15 +107,16 @@ logout: () =>
     request('/wishlist/remove_book', { method: 'DELETE', body: JSON.stringify({ wishlist_id, book_id }) }),
   deleteWishlist: (wishlistId) =>
     request(`/wishlist/${wishlistId}`, { method: 'DELETE' }),
-// Orders (customer)
-checkout: (payload) => request('/orders/checkout', { method: 'POST', body: JSON.stringify(payload) }),
-getCustomerOrders: (customerId) => request(`/orders/customer/${customerId}`),
-getOrderDetail: (orderId) => request(`/orders/${orderId}`),
-cancelOrder: (orderId) => request(`/orders/${orderId}/cancel`, { method: 'PUT' }),
 
-// Reviews
-getBookReviews: (bookId) => request(`/reviews/book/${bookId}`),
-checkReviewEligibility: (customerId, bookId) => request(`/reviews/eligibility/${customerId}/${bookId}`),
-submitReview: ({ customer_id, book_id, rating, comment }) =>
-  request('/reviews', { method: 'POST', body: JSON.stringify({ customer_id, book_id, rating, comment }) }),
+  // Orders (customer)
+  checkout: (payload) => request('/orders/checkout', { method: 'POST', body: JSON.stringify(payload) }),
+  getCustomerOrders: (customerId) => request(`/orders/customer/${customerId}`),
+  getOrderDetail: (orderId) => request(`/orders/${orderId}`),
+  cancelOrder: (orderId) => request(`/orders/${orderId}/cancel`, { method: 'PUT' }),
+
+  // Reviews
+  getBookReviews: (bookId) => request(`/reviews/book/${bookId}`),
+  checkReviewEligibility: (customerId, bookId) => request(`/reviews/eligibility/${customerId}/${bookId}`),
+  submitReview: ({ customer_id, book_id, rating, comment }) =>
+    request('/reviews', { method: 'POST', body: JSON.stringify({ customer_id, book_id, rating, comment }) }),
 };

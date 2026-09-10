@@ -154,4 +154,55 @@ router.post('/logout', verifyToken, async (req, res) => {
   }
 });
 
+
+router.post('/deliveryman-setup', async (req, res) => {
+  const token = typeof req.body.token === 'string' ? req.body.token : '';
+  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  if (!token || !username || !password) {
+    return res.status(400).json({ error: 'Token, username, and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const riderRes = await client.query(
+      `SELECT * FROM deliverymen WHERE invite_token = $1 AND invite_token_expires > NOW() FOR UPDATE`,
+      [token]
+    );
+    const rider = riderRes.rows[0];
+    if (!rider) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid or expired invite link' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await client.query(
+      `UPDATE users SET username = $1, password_hash = $2 WHERE user_id = $3`,
+      [username, passwordHash, rider.user_id]
+    );
+
+    await client.query(
+      `UPDATE deliverymen SET invite_token = NULL, invite_token_expires = NULL WHERE deliveryman_id = $1`,
+      [rider.deliveryman_id]
+    );
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'Account setup complete. You can now log in.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') return res.status(409).json({ error: 'That username is already taken' });
+    console.error('Error completing deliveryman setup:', err.message);
+    res.status(500).json({ error: 'Failed to complete setup' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

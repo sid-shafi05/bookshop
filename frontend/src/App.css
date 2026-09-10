@@ -294,29 +294,34 @@ body {
   outline: none;
 }
 
-/* Book Grid */
+/* ============================================================
+   COMPACT BOOKSTORE-STYLE BOOK CARDS
+   ============================================================ */
+
 .book-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 24px 18px;
 }
 
 .book-card {
   background: #ffffff;
-  border: 1px solid #e8e6e1;
-  border-radius: 4px;
+  border: none;
+  border-radius: 2px;
   display: flex;
   flex-direction: column;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
 }
 
 .book-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
+/* Book cover */
 .cover-wrapper {
-  height: 240px;
+  height: 225px;
   position: relative;
   background-color: #f0eee9;
   overflow: hidden;
@@ -329,10 +334,11 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 1rem;
   text-align: center;
   background: linear-gradient(135deg, #eaddc7 0%, #c7b299 100%);
 }
+
 .book-cover-photo {
   width: 100%;
   height: 100%;
@@ -340,93 +346,97 @@ body {
   display: block;
 }
 
-.art-icon {
-  font-size: 2rem;
-  margin-bottom: 8px;
-}
-
-.art-title {
-  font-family: 'Georgia', serif;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #2b2b2b;
-}
-
+/* Wishlist heart */
 .wishlist-float-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(255,255,255,0.9);
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid #e8e6e1;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+/* Book information */
 .book-meta {
-  padding: 1.2rem;
+  padding: 10px 2px 0;
   display: flex;
   flex-direction: column;
   flex-grow: 1;
 }
 
 .genre-label {
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   text-transform: uppercase;
   color: #8c827a;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .title-text {
   font-family: 'Georgia', serif;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   color: #1a2e40;
-  margin-bottom: 4px;
-  line-height: 1.3;
+  margin-bottom: 3px;
+  line-height: 1.25;
+
+  /* Keep cards compact */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .author-text {
-  font-size: 0.85rem;
+  font-size: 0.74rem;
   color: #666666;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rating-container {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: 3px;
+  margin-bottom: 7px;
 }
 
 .rating-stars {
   color: #c4820a;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
 }
 
 .rating-num {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   color: #717171;
 }
 
+/* Price + stock */
 .price-row {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   margin-top: auto;
-  margin-bottom: 12px;
+  margin-bottom: 7px;
 }
 
 .price-tag {
-  font-size: 1.15rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #1a2e40;
 }
 
 .stock-indicator {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   font-weight: 600;
 }
 
@@ -438,13 +448,15 @@ body {
   color: #c53030;
 }
 
+/* Add to cart */
 .cart-action-btn {
+  width: 100%;
   background-color: #1a2e40;
   color: #ffffff;
   border: none;
-  padding: 10px;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  padding: 7px 8px;
+  border-radius: 2px;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -459,6 +471,7 @@ body {
   color: #999999;
   cursor: not-allowed;
 }
+
 
 /* --------------------------------------------------------------------
    4. SLIDE-OUT DRAWERS (CartDrawer.jsx & WishlistDrawer.jsx)
@@ -1665,3 +1678,20 @@ body {
     flex-direction: column;
   }
 }
+
+
+.pagination-bar { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 24px; }
+.page-nav-btn, .page-num-btn { border: 1px solid #ddd; background: #fff; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.page-num-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.page-nav-btn:disabled { opacity: .4; cursor: not-allowed; }
+.page-dots { padding: 0 4px; color: #999; }
+
+
+.category-carousel { margin-bottom: 28px; }
+.carousel-heading { font-size: 16px; margin: 0 0 10px; padding: 0 4px; }
+.carousel-track { display: flex; gap: 14px; overflow-x: hidden; padding-bottom: 4px; }
+.carousel-item { flex: 0 0 150px; }
+
+
+
+

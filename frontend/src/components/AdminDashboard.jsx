@@ -602,7 +602,7 @@ function OrdersTab() {
 /* ==========================================================================
    DELIVERYMEN TAB — CRUD for the pool of riders
    ========================================================================== */
-const EMPTY_RIDER_FORM = { name: '', phone: '', vehicle_type: '', is_active: true };
+const EMPTY_RIDER_FORM = { name: '', phone: '', vehicle_type: '', email: '', is_active: true };
 
 function DeliverymenTab() {
   const [riders, setRiders] = useState([]);
@@ -644,7 +644,13 @@ function DeliverymenTab() {
   const startEdit = (rider) => {
     setShowCreateForm(false);
     setEditingId(rider.deliveryman_id);
-    setEditForm({ name: rider.name, phone: rider.phone, vehicle_type: rider.vehicle_type || '', is_active: rider.is_active });
+    setEditForm({
+      name: rider.name,
+      phone: rider.phone,
+      vehicle_type: rider.vehicle_type || '',
+      email: rider.email || '',
+      is_active: rider.is_active
+    });
   };
 
   const handleEditSubmit = async (e, id) => {
@@ -685,14 +691,24 @@ function DeliverymenTab() {
 
       {showCreateForm && (
         <form onSubmit={handleCreateSubmit} className="admin-form-card">
-          <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <input placeholder="Full Name" required value={createForm.name}
               onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
             <input placeholder="Phone" required value={createForm.phone}
               onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} />
+            <input
+              type="email"
+              placeholder="Email"
+              required
+              value={createForm.email}
+              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+            />
             <input placeholder="Vehicle (e.g. Motorbike)" value={createForm.vehicle_type}
               onChange={(e) => setCreateForm({ ...createForm, vehicle_type: e.target.value })} />
           </div>
+          <p style={{ fontSize: '0.8rem', color: '#8c827a', marginTop: 6 }}>
+            An email will be sent to this address with a link for the deliveryman to set their own username and password.
+          </p>
           <div className="admin-form-actions">
             <button type="submit" className="btn-save">Add Deliveryman</button>
           </div>
@@ -748,9 +764,13 @@ function DeliverymenTab() {
                   <td>{rider.phone}</td>
                   <td>{rider.vehicle_type || '—'}</td>
                   <td>
-                    <span className={`admin-stock-pill ${rider.is_active ? 'ok' : 'out'}`}>
-                      {rider.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    {rider.invite_pending ? (
+                      <span className="admin-stock-pill low">Pending Setup</span>
+                    ) : (
+                      <span className={`admin-stock-pill ${rider.is_active ? 'ok' : 'out'}`}>
+                        {rider.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <div className="admin-actions-cell">

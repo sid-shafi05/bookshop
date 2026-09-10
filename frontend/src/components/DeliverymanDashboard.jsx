@@ -1,12 +1,3 @@
-// src/components/DeliverymanDashboard.jsx
-//
-// Mount this the same way you mount AdminDashboard — e.g. in App.jsx:
-//   {user.role === 'admin' && <AdminDashboard user={user} onClose={handleSignOut} />}
-//   {user.role === 'deliveryman' && <DeliverymanDashboard user={user} onClose={handleSignOut} />}
-//
-// Reuses AdminDashboard.css classes (admin-wrapper, admin-table, etc.) so it
-// matches your existing look without a new stylesheet.
-
 import { useState, useEffect, Fragment } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
@@ -21,14 +12,12 @@ function formatAddress(o) {
   );
 }
 
-// Simplest possible "maps" integration: no API key, no geocoding — just
-// deep-link into Google Maps with the address as a text search.
 function mapsUrl(address) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
 export default function DeliverymanDashboard({ onClose, user }) {
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'active' | 'history'
+  const [activeTab, setActiveTab] = useState('requests'); // requests | active | history
 
   return (
     <main className="admin-wrapper">
@@ -67,9 +56,6 @@ function TabButton({ label, active, onClick }) {
   );
 }
 
-/* ==========================================================================
-   NEW REQUESTS — accept or decline what admin has assigned
-   ========================================================================== */
 function RequestsTab() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +65,8 @@ function RequestsTab() {
   const load = async () => {
     try {
       setLoading(true);
-      setRequests(await api.getDeliveryRequests());
+      const data = await api.getDeliveryRequests();
+      setRequests(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
       setError(err.message || 'Failed to load requests.');
@@ -94,7 +81,7 @@ function RequestsTab() {
     setBusyId(id);
     try {
       await api.acceptDelivery(id);
-      load();
+      await load();
     } catch (err) {
       alert(err.message || 'Failed to accept request.');
     } finally {
@@ -107,7 +94,7 @@ function RequestsTab() {
     setBusyId(id);
     try {
       await api.declineDelivery(id);
-      load();
+      await load();
     } catch (err) {
       alert(err.message || 'Failed to decline request.');
     } finally {
@@ -159,9 +146,6 @@ function RequestsTab() {
   );
 }
 
-/* ==========================================================================
-   ACTIVE DELIVERIES — order detail + address/maps link + status updates
-   ========================================================================== */
 function ActiveDeliveriesTab() {
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -172,7 +156,8 @@ function ActiveDeliveriesTab() {
   const load = async () => {
     try {
       setLoading(true);
-      setDeliveries(await api.getMyActiveDeliveries());
+      const data = await api.getMyActiveDeliveries();
+      setDeliveries(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
       setError(err.message || 'Failed to load deliveries.');
@@ -186,6 +171,7 @@ function ActiveDeliveriesTab() {
   const toggleDetail = async (id) => {
     if (expandedId === id) return setExpandedId(null);
     setExpandedId(id);
+
     if (detailCache[id]) return;
     try {
       const detail = await api.getMyDeliveryDetail(id);
@@ -198,7 +184,7 @@ function ActiveDeliveriesTab() {
   const advance = async (id, status) => {
     try {
       await api.updateMyDeliveryStatus(id, status);
-      load();
+      await load();
     } catch (err) {
       alert(err.message || 'Failed to update status.');
     }
@@ -231,7 +217,7 @@ function ActiveDeliveriesTab() {
                 <td>{d.customer_name}</td>
                 <td>
                   <span className="admin-status-select" style={{ display: 'inline-block', cursor: 'default' }}>
-                    {d.delivery_status.replace(/_/g, ' ')}
+                    {String(d.delivery_status || '').replace(/_/g, ' ')}
                   </span>
                 </td>
                 <td>
@@ -253,6 +239,7 @@ function ActiveDeliveriesTab() {
                   </select>
                 </td>
               </tr>
+
               {expandedId === d.delivery_id && (
                 <tr>
                   <td colSpan={5} className="admin-order-detail-cell" onClick={(e) => e.stopPropagation()}>
@@ -273,7 +260,9 @@ function ActiveDeliveriesTab() {
                         <h4>Items</h4>
                         {detailCache[d.delivery_id].items.map((item) => (
                           <div className="admin-order-item" key={item.order_item_id}>
-                            <span>{item.title}</span><span>× {item.quantity}</span><span>Tk {Number(item.unit_price).toFixed(2)}</span>
+                            <span>{item.title}</span>
+                            <span>× {item.quantity}</span>
+                            <span>Tk {Number(item.unit_price).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -289,9 +278,6 @@ function ActiveDeliveriesTab() {
   );
 }
 
-/* ==========================================================================
-   HISTORY — completed / failed deliveries
-   ========================================================================== */
 function HistoryTab() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -299,7 +285,7 @@ function HistoryTab() {
 
   useEffect(() => {
     api.getMyDeliveryHistory()
-      .then(setHistory)
+      .then((rows) => setHistory(Array.isArray(rows) ? rows : []))
       .catch((err) => setError(err.message || 'Failed to load history.'))
       .finally(() => setLoading(false));
   }, []);

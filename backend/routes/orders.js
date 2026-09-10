@@ -1,14 +1,11 @@
-// backend/routes/orders.js
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, requireCustomer } = require('../middleware/auth');
 
-// Add token verification to customer order routes
-router.use(verifyToken);
-// ------------------------------------------------------------------
-// Helper: read the customer's current cart (same shape as cart.js)
-// ------------------------------------------------------------------
+// customer-only routes
+router.use(verifyToken, requireCustomer);
+
 async function getCartItems(client, customerId) {
   const query = `
     SELECT b.book_id, b.title, b.price, b.stock_quantity, ci.quantity
@@ -21,6 +18,7 @@ async function getCartItems(client, customerId) {
   const result = await client.query(query, [customerId]);
   return result.rows;
 }
+
 async function verifyOrderOwnership(orderId, userId) {
   const result = await pool.query(
     'SELECT customer_id FROM orders WHERE order_id = $1',
@@ -28,43 +26,35 @@ async function verifyOrderOwnership(orderId, userId) {
   );
 
   if (result.rows.length === 0) return null;
-
   return Number(result.rows[0].customer_id) === Number(userId)
     ? result.rows[0]
     : false;
 }
-// ====================================================================
-// POST /orders/checkout -> turns the cart into a 'pending' order
-// Body: { customer_id, payment_method, coupon_code?,
-//         shipping_house_no?, shipping_street, shipping_city,
-//         shipping_postal_code?, shipping_country }
-// ====================================================================
+
 router.post('/checkout', async (req, res) => {
   const {
     customer_id, payment_method, coupon_code,
     shipping_house_no, shipping_street, shipping_city,
     shipping_postal_code, shipping_country
   } = req.body;
+
   if (!customer_id) return res.status(400).json({ error: 'customer_id is required' });
 
-  // Can only checkout for yourself.
   if (Number(customer_id) !== Number(req.userId)) {
     return res.status(403).json({ error: 'Access denied: cannot checkout for another user' });
   }
 
   const allowedPaymentMethods = ['cash_on_delivery', 'mock_online'];
-
-if (!allowedPaymentMethods.includes(payment_method)) {
-  return res.status(400).json({
-    error: 'Invalid payment method'
-  });
-}
+  if (!allowedPaymentMethods.includes(payment_method)) {
+    return res.status(400).json({ error: 'Invalid payment method' });
+  }
 
   if (!shipping_street || !shipping_city || !shipping_country) {
     return res.status(400).json({ error: 'Shipping address is incomplete' });
   }
- const paymentStatus =
-    payment_method === 'cash_on_delivery' ? 'unpaid' : 'paid';
+
+  const paymentStatus = payment_method === 'cash_on_delivery' ? 'unpaid' : 'paid';
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -75,9 +65,8 @@ if (!allowedPaymentMethods.includes(payment_method)) {
       return res.status(400).json({ error: 'Your cart is empty' });
     }
 
-    // Verify stock for every line before touching anything
     for (const item of cartItems) {
-      if (item.quantity > item.stock_quantity || item.quantity<=0) {
+      if (item.quantity > item.stock_quantity || item.quantity <= 0) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: `"${item.title}" only has ${item.stock_quantity} left in stock` });
       }
@@ -109,16 +98,24 @@ if (!allowedPaymentMethods.includes(payment_method)) {
 
     const total = Math.max(subtotal - discount, 0);
 
- 
-
     const orderRes = await client.query(
       `INSERT INTO orders
         (customer_id, coupon_id, total_amount, status, payment_status, payment_method,
          shipping_house_no, shipping_street, shipping_city, shipping_postal_code, shipping_country)
        VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [customer_id, coupon ? coupon.coupon_id : null, total.toFixed(2),paymentStatus ,payment_method || null,
-        shipping_house_no || null, shipping_street, shipping_city, shipping_postal_code || null, shipping_country]
+      [
+        customer_id,
+        coupon ? coupon.coupon_id : null,
+        total.toFixed(2),
+        paymentStatus,
+        payment_method || null,
+        shipping_house_no || null,
+        shipping_street,
+        shipping_city,
+        shipping_postal_code || null,
+        shipping_country
+      ]
     );
     const order = orderRes.rows[0];
 
@@ -150,7 +147,12 @@ if (!allowedPaymentMethods.includes(payment_method)) {
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ order, subtotal: subtotal.toFixed(2), discount: discount.toFixed(2), total: total.toFixed(2) });
+    res.status(201).json({
+      order,
+      subtotal: subtotal.toFixed(2),
+      discount: discount.toFixed(2),
+      total: total.toFixed(2)
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Checkout error:', err.message);
@@ -160,54 +162,14 @@ if (!allowedPaymentMethods.includes(payment_method)) {
   }
 });
 
-// ====================================================================
-// POST /orders/:id/pay -> mock payment gateway, always succeeds
-// ====================================================================
-/*router.post('/:id/pay', async (req, res) => {
-  const { id } = req.params;
-  try {
-        const ownership = await verifyOrderOwnership(id, req.userId);
-    if (ownership === null) return res.status(404).json({ error: 'Order not found' });
-    if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
-
-    const orderRes = await pool.query('SELECT * FROM orders WHERE order_id = $1', [id]);
-    const order = orderRes.rows[0];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status === 'cancelled') return res.status(400).json({ error: 'This order was cancelled' });
-    if (order.payment_status === 'paid') return res.status(400).json({ error: 'Order is already paid' });
-
-    const result = await pool.query(
-      `UPDATE orders
-SET payment_status = 'paid',
-    updated_at = CURRENT_TIMESTAMP
-WHERE order_id = $1 RETURNING *`,
-      [id]
-    );
-
-    await pool.query(
-      `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'order')`,
-      [order.customer_id, `Payment received for Order #${order.order_id}. We're preparing it now.`]
-    );
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Payment error:', err.message);
-    res.status(500).json({ error: 'Payment failed' });
-  }
-});*/
-
-// ====================================================================
-// GET /orders/customer/:customer_id -> order history list
-// ====================================================================
 router.get('/customer/:customer_id', async (req, res) => {
-    const { customer_id } = req.params;
+  const { customer_id } = req.params;
 
-  // can only see your own orders
   if (Number(customer_id) !== Number(req.userId)) {
     return res.status(403).json({ error: 'Access denied: cannot view another user\'s orders' });
   }
-  try {
 
+  try {
     const result = await pool.query(
       `SELECT o.*,
         (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id)::int AS item_count,
@@ -225,13 +187,9 @@ router.get('/customer/:customer_id', async (req, res) => {
   }
 });
 
-// ====================================================================
-// GET /orders/:id -> full order detail (items, delivery, review flags)
-// ====================================================================
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-  
     const ownership = await verifyOrderOwnership(id, req.userId);
     if (ownership === null) return res.status(404).json({ error: 'Order not found' });
     if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
@@ -270,22 +228,24 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ====================================================================
-// PUT /orders/:id/cancel -> customer-initiated cancellation
-// Only allowed before the order has started being prepared/shipped
-// ====================================================================
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
-    const ownership = await verifyOrderOwnership(id, req.userId);
+
+  const ownership = await verifyOrderOwnership(id, req.userId);
   if (ownership === null) return res.status(404).json({ error: 'Order not found' });
   if (ownership === false) return res.status(403).json({ error: 'You cannot cancel another user\'s order' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
     const orderRes = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
     const order = orderRes.rows[0];
-    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Order not found' }); }
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
     if (!['pending', 'confirmed'].includes(order.status)) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This order can no longer be cancelled — it is already being prepared or shipped' });
@@ -300,6 +260,7 @@ router.put('/:id/cancel', async (req, res) => {
       `UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *`,
       [id]
     );
+
     await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (err) {
@@ -310,52 +271,5 @@ router.put('/:id/cancel', async (req, res) => {
     client.release();
   }
 });
-
-// ====================================================================
-// PUT /orders/:id/receive -> customer confirms they got the order.
-// Only allowed once the admin has shipped it. Marks both the order
-// and its delivery record as 'delivered', which unlocks reviews.
-// ====================================================================
-/*router.put('/:id/receive', async (req, res) => {
-  const { id } = req.params;
-    const ownership = await verifyOrderOwnership(id, req.userId);
-  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
-  if (ownership === false) return res.status(403).json({ error: 'Access denied: cannot confirm receipt of another user\'s order' });
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const orderRes = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
-    const order = orderRes.rows[0];
-    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Order not found' }); }
-    if (order.status !== 'shipped') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Order must be shipped before it can be marked as received (current status: "${order.status}")` });
-    }
-
-    await client.query(
-      `UPDATE deliveries SET status = 'delivered', delivery_date = CURRENT_TIMESTAMP WHERE order_id = $1`,
-      [id]
-    );
-    const updOrder = await client.query(
-      `UPDATE orders SET status = 'delivered', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *`,
-      [id]
-    );
-
-    await client.query(
-      `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'order')`,
-      [order.customer_id, `Thanks for confirming Order #${id} arrived! We'd love to hear your thoughts — leave a review.`]
-    );
-
-    await client.query('COMMIT');
-    res.json(updOrder.rows[0]);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Receive order error:', err.message);
-    res.status(500).json({ error: 'Failed to confirm receipt' });
-  } finally {
-    client.release();
-  }
-});*/
 
 module.exports = router;

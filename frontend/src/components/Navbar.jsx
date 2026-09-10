@@ -1,21 +1,13 @@
 // src/components/Navbar.jsx
 import { useState } from 'react';
-
-const CATEGORIES = [
-  'All',
-  'Fiction & Literature',
-  'Self-Development',
-  'Computer Science & Tech',
-  'Sci-Fi & Fantasy',
-  'Academic & Education',
-  'Classics'
-];
+import CategoryDropdown from './CategoryDropdown';
 
 export default function Navbar({
   selectedCategory,
   setSelectedCategory,
   searchQuery,
   setSearchQuery,
+  categories,
   wishlistCount,
   cartCount,
   user,
@@ -36,9 +28,9 @@ export default function Navbar({
         </div>
 
         <div className="search-container">
-          <input 
-            type="text" 
-            placeholder="Search by Title, Author, or Keyword..." 
+          <input
+            type="text"
+            placeholder="Search by Title, Author, or Keyword..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -46,6 +38,12 @@ export default function Navbar({
         </div>
 
         <div className="nav-controls">
+          <CategoryDropdown
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+          />
+
           <button className="nav-icon-btn" onClick={onOpenWishlist}>
             <span className="icon-symbol">♡</span>
             <span className="btn-label">Wishlists</span>
@@ -94,20 +92,6 @@ export default function Navbar({
           )}
         </div>
       </div>
-
-      <nav className="category-subnav">
-        <div className="category-inner">
-          {CATEGORIES.map((cat) => (
-            <button 
-              key={cat} 
-              className={`cat-pill ${selectedCategory === cat ? 'active' : ''}`}
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </nav>
     </header>
   );
 }
