@@ -68,12 +68,14 @@ router.put('/:id', async (req, res) => {
     }
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'return')`,
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       VALUES ($1, $2, 'return', 'order', $3)`,
       [
         returnRow.customer_id,
         decision === 'approved'
           ? `Your return for Order #${returnRow.order_id} was approved. A refund has been issued.`
-          : `Your return request for Order #${returnRow.order_id} was rejected.`
+          : `Your return request for Order #${returnRow.order_id} was rejected.`,
+        returnRow.order_id
       ]
     );
 

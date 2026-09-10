@@ -141,9 +141,9 @@ router.post('/checkout', async (req, res) => {
         : `Order #${order.order_id} placed successfully. Simulated online payment recorded.`;
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic)
-       VALUES ($1, $2, 'order')`,
-      [customer_id, notification]
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       VALUES ($1, $2, 'order', 'order', $3)`,
+      [customer_id, notification, order.order_id]
     );
 
     await client.query('COMMIT');
@@ -339,10 +339,10 @@ router.post('/:id/return', async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic)
-       SELECT admin_id, $1, 'return'
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       SELECT admin_id, $1, 'return', 'order', $2
        FROM admins`,
-      [`Return requested for Order #${id}.`]
+      [`Return requested for Order #${id}.`, id]
     );
 
     await client.query('COMMIT');

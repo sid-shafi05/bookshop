@@ -423,3 +423,17 @@ ALTER TABLE deliveries
   ALTER TABLE deliverymen
   ADD COLUMN invite_token VARCHAR(64) UNIQUE,
   ADD COLUMN invite_token_expires TIMESTAMP;
+
+
+  ALTER TABLE returns
+  ADD COLUMN order_id INTEGER REFERENCES orders(order_id) ON DELETE CASCADE,
+  ADD COLUMN requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN resolved_at TIMESTAMP,
+  ALTER COLUMN order_item_id DROP NOT NULL;
+
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS reference_type VARCHAR(30),
+  ADD COLUMN IF NOT EXISTS reference_id INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_reference
+  ON notifications(reference_type, reference_id);

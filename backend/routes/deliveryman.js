@@ -87,10 +87,10 @@ router.post('/deliveries/:deliveryId/accept', async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic)
-       SELECT admin_id, $1, 'delivery'
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       SELECT admin_id, $1, 'delivery', 'order', $2
        FROM admins`,
-      [`Deliveryman accepted Order #${delivery.order_id}.`]
+      [`Deliveryman accepted Order #${delivery.order_id}.`, delivery.order_id]
     );
 
     await client.query('COMMIT');
@@ -137,10 +137,10 @@ router.post('/deliveries/:deliveryId/decline', async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic)
-       SELECT admin_id, $1, 'delivery'
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       SELECT admin_id, $1, 'delivery', 'order', $2
        FROM admins`,
-      [`Deliveryman declined Order #${delivery.order_id}. Please reassign.`]
+      [`Deliveryman declined Order #${delivery.order_id}. Please reassign.`, delivery.order_id]
     );
 
     await client.query('COMMIT');
@@ -230,9 +230,13 @@ router.put('/deliveries/:deliveryId/status', async (req, res) => {
 
       if (updOrder.rows[0]) {
         await client.query(
-          `INSERT INTO notifications (user_id, text, topic)
-           VALUES ($1, $2, 'order')`,
-          [updOrder.rows[0].customer_id, `Order #${updOrder.rows[0].order_id} delivered. You can now leave a review.`]
+          `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+           VALUES ($1, $2, 'order', 'order', $3)`,
+          [
+            updOrder.rows[0].customer_id,
+            `Order #${updOrder.rows[0].order_id} delivered. You can now leave a review.`,
+            updOrder.rows[0].order_id
+          ]
         );
       }
     }

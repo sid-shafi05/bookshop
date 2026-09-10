@@ -327,16 +327,17 @@ router.post('/orders/:id/ship', async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'order')`,
-      [order.customer_id, `Order #${id} is on its way with ${rider.name} (${rider.phone}).`]
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       VALUES ($1, $2, 'order', 'order', $3)`,
+      [order.customer_id, `Order #${id} is on its way with ${rider.name} (${rider.phone}).`, id]
     );
 
     // admin notification copy (optional)
     await client.query(
-      `INSERT INTO notifications (user_id, text, topic)
-       SELECT admin_id, $1, 'delivery'
+      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+       SELECT admin_id, $1, 'delivery', 'order', $2
        FROM admins`,
-      [`Order #${id} assigned to ${rider.name} and awaiting acceptance.`]
+      [`Order #${id} assigned to ${rider.name} and awaiting acceptance.`, id]
     );
 
     await client.query('COMMIT');
@@ -389,8 +390,9 @@ router.put('/deliveries/:delivery_id/status', async (req, res) => {
 
       if (order) {
         await client.query(
-          `INSERT INTO notifications (user_id, text, topic) VALUES ($1, $2, 'order')`,
-          [order.customer_id, `Order #${order.order_id} has been delivered. You can now leave a review.`]
+          `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+           VALUES ($1, $2, 'order', 'order', $3)`,
+          [order.customer_id, `Order #${order.order_id} has been delivered. You can now leave a review.`, order.order_id]
         );
       }
     }

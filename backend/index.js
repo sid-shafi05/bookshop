@@ -26,7 +26,9 @@ app.use('/wishlist', require('./routes/wishlist'));
 app.use('/orders', require('./routes/orders'));
 app.use('/reviews', require('./routes/reviews'));
 app.use('/admin', require('./routes/admin'));
-app.use('/deliveryman', require('./routes/deliveryman')); // NEW
+app.use('/admin/returns', require('./routes/adminreturns'));
+app.use('/deliveryman', require('./routes/deliveryman'));
+app.use('/notifications', require('./routes/notifications')); // NEW
 
 app.use('/images/books', express.static(path.join(__dirname, 'uploads', 'books')));
 
