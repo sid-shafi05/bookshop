@@ -1,20 +1,17 @@
-const nodemailer = require("nodemailer");
+// backend/utils/mailer.js
+const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
-  },
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
-async function sendMail({ to, subject, html }) {
+async function sendEmail(to, subject, text) {
   await transporter.sendMail({
-    from: process.env.MAIL_USER,
-    to,
-    subject,
-    html,
+    from: process.env.SMTP_FROM || 'BookHarbour <no-reply@bookharbour.com>',
+    to, subject, text,
   });
 }
 
-module.exports = { sendMail };
+module.exports = sendEmail;

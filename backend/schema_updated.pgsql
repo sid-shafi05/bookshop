@@ -437,3 +437,7 @@ ALTER TABLE notifications
 
 CREATE INDEX IF NOT EXISTS idx_notifications_reference
   ON notifications(reference_type, reference_id);
+
+  ALTER TABLE notifications
+  ADD COLUMN entity_type VARCHAR(30),   -- 'order' | 'delivery' | 'review' etc.
+  ADD COLUMN entity_id INTEGER;         -- order_id / delivery_id / etc.
