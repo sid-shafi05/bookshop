@@ -1,20 +1,25 @@
 const express = require('express');
 const router= express.Router();
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const pool = require('../db');
-const notify = require('../utils/notify');
 
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { notify, notifyAdmins } = require('../utils/notify');
+const { sendEmail } = require('../utils/email');
+
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const emailRegex = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 
 // All routes below require a valid admin token
 router.use(verifyToken, requireAdmin);
 
 // ====================================================================
-// BOOKS
+// BOOKS  (unchanged)
 // ====================================================================
 
-// Add a new book (admin only) — now accepts an optional cover_image file
 router.post('/books', upload.single('cover_image'), async (req, res) => {
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
   const isbn = typeof req.body.isbn === 'string' ? req.body.isbn.trim() || null : null;
@@ -26,7 +31,6 @@ router.post('/books', upload.single('cover_image'), async (req, res) => {
     return res.status(400).json({ error: 'Publication year must be between 1000 and 2100' });
   }
 
-    // req.file only exists if a file was actually uploaded (multer put it there)
     const cover_url = req.file ? `/images/books/${req.file.filename}` : null;
 
     const client = await pool.connect();
@@ -79,7 +83,6 @@ router.get('/books', async (req, res) => {
     }
 });
 
-// Update a book — now accepts an optional new cover_image file
 router.put('/books/:id', upload.single('cover_image'), async (req, res) => {
     const { id } = req.params;
     const { title, isbn, price, stock_quantity, publication_year, existing_cover_url, category_id } = req.body;
@@ -122,7 +125,6 @@ router.get('/categories', async (req, res) => {
 
 router.delete('/books/:id', async (req, res) => {
     const { id } = req.params;
-
     try {
         const result = await pool.query('DELETE FROM books WHERE book_id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) {
@@ -136,53 +138,59 @@ router.delete('/books/:id', async (req, res) => {
 });
 
 // ====================================================================
-// USERS (read-only)
+// ADMINS
+//
+// Changed to the same invite pattern as deliverymen (see the note at the
+// bottom of this file for why): the inviting admin supplies username + email
+// only; the new admin sets their own password via the emailed link.
 // ====================================================================
 
-// Create another admin. Every existing admin is allowed to use this endpoint.
 router.post('/admins', async (req, res) => {
   const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  const password = typeof req.body.password === 'string' ? req.body.password : '';
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'Username, email, and password are required' });
+  if (!username || !email) {
+    return res.status(400).json({ error: 'Username and email are required' });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) {
+  if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Please provide a valid email address' });
   }
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email.trim())) {
-    return res.status(400).json({ error: 'Please provide a valid email address.' });
-  }
-    if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
-  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const passwordHash = await bcrypt.hash(password, 10);
-    const userResult = await client.query(
-      `INSERT INTO users (username, email, password_hash, role)
-       VALUES ($1, $2, $3, 'admin')
-       RETURNING user_id, username, email, role, created_at`,
-      [username.trim(), email.trim().toLowerCase(), passwordHash]
-    );
-    const admin = userResult.rows[0];
-    await client.query('INSERT INTO admins (admin_id) VALUES ($1)', [admin.user_id]);
-    await client.query('COMMIT');
-    res.status(201).json(admin);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    if (err.code === '23505') {
+    const existing = await client.query('SELECT 1 FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
-    console.error('Error creating admin:', err.message);
-    res.status(500).json({ error: 'Failed to create admin' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    await client.query(
+      `INSERT INTO registration_invites (token, email, role, expires_at)
+       VALUES ($1, $2, 'admin', $3)`,
+      [token, email, expiresAt]
+    );
+    await client.query('COMMIT');
+
+    const link = `${FRONTEND_URL}/register/admin?token=${token}`;
+    sendEmail({
+      to: email,
+      subject: 'You have been invited as a BookHarbour admin',
+      text: `Hi ${username}, you've been invited to be an admin on BookHarbour. Finish setting up your account (choose your own password) here: ${link}\nThis link expires in 7 days.`
+    }).catch(err => console.error('Admin invite email failed:', err.message));
+
+    res.status(201).json({ message: `Invite sent to ${email}` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error inviting admin:', err.message);
+    res.status(500).json({ error: 'Failed to send admin invite' });
   } finally {
     client.release();
   }
 });
 
+// USERS (read-only, unchanged)
 router.get('/users', async (req, res) => {
   try {
     const result = await pool.query(
@@ -195,11 +203,57 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// PUT /admin/users/:id -> admin edits ANY user's profile fields.
+// Deliberately does NOT allow changing `role` here — promoting/demoting is a
+// separate, more sensitive action; keep using the invite flow (POST /admin/admins)
+// or a direct SQL promotion for that, not this general-purpose edit endpoint.
+// Body: any subset of { username, email, phone, house_no, street, city, postal_code, country }
+router.put('/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const fields = ['username', 'email', 'phone', 'house_no', 'street', 'city', 'postal_code', 'country'];
+  const updates = {};
+  for (const f of fields) {
+    if (req.body[f] !== undefined) updates[f] = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  if (updates.username !== undefined && updates.username === '') {
+    return res.status(400).json({ error: 'Username cannot be empty' });
+  }
+  if (updates.email !== undefined) {
+    updates.email = updates.email.toLowerCase();
+    if (!emailRegex.test(updates.email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address' });
+    }
+  }
+
+  const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 1}`);
+  const values = Object.values(updates);
+  values.push(id);
+
+  try {
+    const result = await pool.query(
+      `UPDATE users SET ${setClauses.join(', ')} WHERE user_id = $${values.length}
+       RETURNING user_id, username, email, role, phone, house_no, street, city, postal_code, country`,
+      values
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'User updated', user: result.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That email is already in use by another account' });
+    }
+    console.error('Error updating user:', err.message);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
 // ====================================================================
 // ORDERS
 // ====================================================================
 
-// GET all orders with customer info + delivery snapshot
 router.get('/orders', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -248,9 +302,6 @@ router.get('/order-details/:id', async (req, res) => {
   }
 });
 
-// PUT update order status — manual override, kept for flexibility.
-// The normal path for shipped/delivered is via /orders/:id/ship and
-// /deliveries/:delivery_id/status below, which keep the delivery row in sync.
 router.put('/orders/:id', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -271,6 +322,13 @@ router.put('/orders/:id', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Order not found' });
     }
+    await notify({
+      userId: result.rows[0].customer_id,
+      text: `Order #${id} status changed to "${status}".`,
+      topic: 'order',
+      referenceType: 'order',
+      referenceId: Number(id),
+    });
     res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error('Error updating order status:', err);
@@ -280,9 +338,9 @@ router.put('/orders/:id', async (req, res) => {
 
 // POST /admin/orders/:id/ship -> assign a deliveryman, create/refresh the
 // delivery record as 'pending_acceptance', and move the order to 'shipped'.
-// The rider must accept it from his own dashboard before he can act on it —
-// see deliveryman.routes.js.
-// Body: { deliveryman_id, shipping_method?, tracking_number? }
+// Now notifies BOTH the customer and the assigned rider (previously only
+// the customer got a notification — the rider had no way to know a delivery
+// was waiting on them beyond polling their dashboard).
 router.post('/orders/:id/ship', async (req, res) => {
   const { id } = req.params;
   const { deliveryman_id, shipping_method, tracking_number } = req.body;
@@ -310,10 +368,6 @@ router.post('/orders/:id/ship', async (req, res) => {
     if (!rider) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Deliveryman not found' }); }
     if (!rider.is_active) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'This deliveryman is inactive' }); }
 
-    // One delivery row per order — create it if this is the first assignment,
-    // otherwise re-assign (e.g. swapping riders) while keeping the same tracking number.
-    // Status always resets to 'pending_acceptance' — the newly assigned rider
-    // has to accept it himself before it becomes active.
     const existingRes = await client.query('SELECT * FROM deliveries WHERE order_id = $1', [id]);
     let delivery;
     if (existingRes.rows.length > 0) {
@@ -348,24 +402,24 @@ router.post('/orders/:id/ship', async (req, res) => {
       [id]
     );
 
-    // Notify the customer their order shipped
-    await notify(client, {
+    await notify({
       userId: order.customer_id,
       text: `Order #${id} is on its way with ${rider.name} (${rider.phone}).`,
       topic: 'order',
-      entityType: 'order',
-      entityId: Number(id),
+      referenceType: 'order',
+      referenceId: Number(id),
+      client,
     });
 
-    // Also notify the deliveryman himself — he has a login now, he should
-    // see a "you've got a new delivery request" item on his own dashboard.
+    // NEW: the rider themself now gets told a delivery is waiting on them.
     if (rider.user_id) {
-      await notify(client, {
+      await notify({
         userId: rider.user_id,
-        text: `You've been assigned Order #${id}. Accept or decline it from your dashboard.`,
+        text: `You've been assigned a new delivery for Order #${id}. Please accept or decline it from your dashboard.`,
         topic: 'delivery',
-        entityType: 'delivery',
-        entityId: delivery.delivery_id,
+        referenceType: 'delivery',
+        referenceId: delivery.delivery_id,
+        client,
       });
     }
 
@@ -381,9 +435,6 @@ router.post('/orders/:id/ship', async (req, res) => {
 });
 
 // PUT /admin/deliveries/:delivery_id/status -> manual admin override.
-// Marking it 'delivered' also marks the parent order delivered. The rider's
-// own progression (preparing -> ... -> delivered) normally happens through
-// his own dashboard (deliveryman.routes.js) instead of this endpoint.
 router.put('/deliveries/:delivery_id/status', async (req, res) => {
   const { delivery_id } = req.params;
   const { status } = req.body;
@@ -419,13 +470,34 @@ router.put('/deliveries/:delivery_id/status', async (req, res) => {
         [delivery.order_id]
       );
       order = updOrder.rows[0];
-      await notify(client, {
+      await notify({
         userId: order.customer_id,
         text: `Order #${order.order_id} has been delivered. We'd love to hear what you thought — leave a review!`,
         topic: 'order',
-        entityType: 'order',
-        entityId: order.order_id,
+        referenceType: 'order',
+        referenceId: order.order_id,
+        client,
       });
+
+      await notifyAdmins({
+        text: `Order #${order.order_id} has been marked delivered.`,
+        topic: 'order',
+        referenceType: 'order',
+        referenceId: order.order_id,
+        client,
+      });
+    } else {
+      const orderRow = await client.query('SELECT customer_id FROM orders WHERE order_id = $1', [delivery.order_id]);
+      if (orderRow.rows[0]) {
+        await notify({
+          userId: orderRow.rows[0].customer_id,
+          text: `Your delivery for Order #${delivery.order_id} is now "${status.replace(/_/g, ' ')}".`,
+          topic: 'delivery',
+          referenceType: 'order',
+          referenceId: delivery.order_id,
+          client,
+        });
+      }
     }
 
     await client.query('COMMIT');
@@ -440,13 +512,21 @@ router.put('/deliveries/:delivery_id/status', async (req, res) => {
 });
 
 // ====================================================================
-// DELIVERYMEN — riders, now with their own login (role = 'deliveryman')
+// DELIVERYMEN
+//
+// Changed from "admin sets the rider's username/email/password directly"
+// to an invite flow, same shape as the admin invite above: admin supplies
+// name/phone/vehicle_type/email, the roster row is created inactive with no
+// login yet, and an email goes out with a link for the rider to set their
+// own username + password. is_active flips TRUE only once they finish that.
 // ====================================================================
 
 router.get('/deliverymen', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT deliveryman_id, user_id, name, phone, vehicle_type, is_active FROM deliverymen ORDER BY is_active DESC, name ASC'
+      `SELECT deliveryman_id, user_id, name, phone, vehicle_type, is_active, invite_email,
+              (user_id IS NOT NULL) AS registered
+       FROM deliverymen ORDER BY is_active DESC, name ASC`
     );
     res.json(result.rows);
   } catch (err) {
@@ -455,62 +535,62 @@ router.get('/deliverymen', async (req, res) => {
   }
 });
 
-// Creates BOTH the login (users, role='deliveryman') and the roster entry
-// (deliverymen) in one go, the same way /admins creates an admin login.
 router.post('/deliverymen', async (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
   const vehicle_type = typeof req.body.vehicle_type === 'string' ? req.body.vehicle_type.trim() || null : null;
-  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  const password = typeof req.body.password === 'string' ? req.body.password : '';
 
-  if (!name || !phone) {
-    return res.status(400).json({ error: 'Name and phone are required' });
+  if (!name || !phone || !email) {
+    return res.status(400).json({ error: 'Name, phone, and email are required' });
   }
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'Username, email, and password are required to create the deliveryman\'s login' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) {
+  if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Please provide a valid email address' });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const passwordHash = await bcrypt.hash(password, 10);
-    const userResult = await client.query(
-      `INSERT INTO users (username, email, password_hash, role)
-       VALUES ($1, $2, $3, 'deliveryman')
-       RETURNING user_id`,
-      [username, email, passwordHash]
-    );
-    const userId = userResult.rows[0].user_id;
+    const existing = await client.query('SELECT 1 FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
 
     const riderResult = await client.query(
-      `INSERT INTO deliverymen (user_id, name, phone, vehicle_type) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, name, phone, vehicle_type]
+      `INSERT INTO deliverymen (name, phone, vehicle_type, invite_email, is_active)
+       VALUES ($1, $2, $3, $4, FALSE) RETURNING *`,
+      [name, phone, vehicle_type, email]
     );
+    const rider = riderResult.rows[0];
 
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    await client.query(
+      `INSERT INTO registration_invites (token, email, role, deliveryman_id, expires_at)
+       VALUES ($1, $2, 'deliveryman', $3, $4)`,
+      [token, email, rider.deliveryman_id, expiresAt]
+    );
     await client.query('COMMIT');
-    res.status(201).json(riderResult.rows[0]);
+
+    const link = `${FRONTEND_URL}/deliveryman/setup?token=${token}`;
+    sendEmail({
+      to: email,
+      subject: 'Set up your BookHarbour deliveryman account',
+      text: `Hi ${name}, you've been added as a deliveryman on BookHarbour. Finish setting up your login (choose your own username and password) here: ${link}\nThis link expires in 7 days. Until you finish setup, you won't be assignable to deliveries.`
+    }).catch(err => console.error('Deliveryman invite email failed:', err.message));
+
+    res.status(201).json({ deliveryman: rider, message: `Invite sent to ${email}` });
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'An account with this username or email already exists' });
-    }
-    console.error('Error creating deliveryman:', err.message);
+    console.error('Error inviting deliveryman:', err.message);
     res.status(500).json({ error: 'Failed to add deliveryman' });
   } finally {
     client.release();
   }
 });
 
-// Roster-only fields — this deliberately does NOT touch the linked login.
-// Use a separate "reset password" flow if you need that later.
+// Roster-only fields.
 router.put('/deliverymen/:id', async (req, res) => {
   const { id } = req.params;
   const { name, phone, vehicle_type, is_active } = req.body;
@@ -533,8 +613,6 @@ router.delete('/deliverymen/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Riders with delivery history are deactivated instead of deleted so
-    // past orders keep a valid reference; only unused riders are removed.
     const inUse = await client.query('SELECT 1 FROM deliveries WHERE deliveryman_id = $1 LIMIT 1', [id]);
     if (inUse.rows.length > 0) {
       const result = await client.query('UPDATE deliverymen SET is_active = FALSE WHERE deliveryman_id = $1 RETURNING *', [id]);
@@ -547,7 +625,6 @@ router.delete('/deliverymen/:id', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Deliveryman not found' });
     }
-    // Also remove the login so a deleted rider can't sign in anymore.
     const rider = riderRes.rows[0];
     if (rider.user_id) {
       await client.query('DELETE FROM users WHERE user_id = $1', [rider.user_id]);

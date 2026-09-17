@@ -4,8 +4,7 @@ const pool = require('../db');
 const { verifyToken } = require('../middleware/auth');
 // adding verifyToken middleware to ALL cart routes
 router.use(verifyToken);
-// HELPER: Stock Validator
-// Returns { valid: true } or { valid: false, status, message }
+
 async function validateBookStock(bookId, requestedQty) {
     const res = await pool.query(
         'SELECT title, stock_quantity FROM books WHERE book_id = $1',
@@ -35,14 +34,13 @@ async function validateBookStock(bookId, requestedQty) {
 
 router.get('/:customer_id', async (req, res) => {
     const { customer_id } = req.params;
-     //check ownership
-  if (Number(customer_id) !== req.userId) {
-    return res.status(403).json({ error: 'Access denied: not your cart' });
-  }
+    if (Number(customer_id) !== req.userId) {
+        return res.status(403).json({ error: 'Access denied: not your cart' });
+    }
 
     try {
         const query =
-                        ` SELECT b.book_id,b.title,b.cover_url,b.price,ci.quantity,(b.price*ci.quantity) AS per_book_total,
+            ` SELECT b.book_id,b.title,b.cover_url,b.price,ci.quantity,(b.price*ci.quantity) AS per_book_total,
                             COALESCE(STRING_AGG(a.name,', '), 'Various Authors') AS author_names
         FROM carts c  
         join cart_items ci ON c.cart_id=ci.cart_id 
@@ -57,7 +55,6 @@ router.get('/:customer_id', async (req, res) => {
         const result = await pool.query(query, [customer_id]);
 
         let subtotal = 0;
-
         for (let book of result.rows) {
             subtotal = subtotal + Number(book.per_book_total);
         }
@@ -67,13 +64,11 @@ router.get('/:customer_id', async (req, res) => {
         console.error('Error fetching cart:', err.message);
         res.status(500).json({ error: 'Internal Server Error' });
     }
-}
-);
+});
 
-router.post('/add',async (req, res) => {
+router.post('/add', async (req, res) => {
     const { customer_id, book_id, quantity } = req.body;
 
-    // Ownership check
     if (Number(customer_id) !== req.userId) {
         return res.status(403).json({ error: 'Access denied: not your cart' });
     }
@@ -82,48 +77,47 @@ router.post('/add',async (req, res) => {
     if (!Number.isInteger(addQty) || addQty <= 0) {
         return res.status(400).json({ error: 'Quantity must be a positive whole number' });
     }
-try{
-    await pool.query(
-        `INSERT INTO carts (customer_id)
-         SELECT customer_id FROM customers WHERE customer_id = $1
-         ON CONFLICT (customer_id) DO NOTHING`,
-        [customer_id]
-    );
+    try {
+        await pool.query(
+            `INSERT INTO carts (customer_id)
+             SELECT customer_id FROM customers WHERE customer_id = $1
+             ON CONFLICT (customer_id) DO NOTHING`,
+            [customer_id]
+        );
 
-    const existing = await pool.query(
-        `SELECT quantity FROM cart_items 
-         WHERE cart_id = (SELECT cart_id FROM carts WHERE customer_id = $1) 
-           AND book_id = $2`,
-        [customer_id, book_id]
-    );
-    const inCart = existing.rows.length > 0 ? existing.rows[0].quantity : 0;
-    const totalRequested = inCart + addQty;
+        const existing = await pool.query(
+            `SELECT quantity FROM cart_items 
+             WHERE cart_id = (SELECT cart_id FROM carts WHERE customer_id = $1) 
+               AND book_id = $2`,
+            [customer_id, book_id]
+        );
+        const inCart = existing.rows.length > 0 ? existing.rows[0].quantity : 0;
+        const totalRequested = inCart + addQty;
 
-    const stockCheck = await validateBookStock(book_id, totalRequested);
-    if (!stockCheck.valid) {
-        return res.status(stockCheck.status).json({ error: stockCheck.message });
-    }
+        const stockCheck = await validateBookStock(book_id, totalRequested);
+        if (!stockCheck.valid) {
+            return res.status(stockCheck.status).json({ error: stockCheck.message });
+        }
 
-    const insertRes = await pool.query(
-        `INSERT INTO cart_items (cart_id, book_id, quantity)
-         VALUES ((SELECT cart_id FROM carts WHERE customer_id = $1), $2, $3)
-         ON CONFLICT (cart_id, book_id)
-         DO UPDATE SET quantity = cart_items.quantity + $3
-         RETURNING *`,
-        [customer_id, book_id, addQty]
-    );
+        const insertRes = await pool.query(
+            `INSERT INTO cart_items (cart_id, book_id, quantity)
+             VALUES ((SELECT cart_id FROM carts WHERE customer_id = $1), $2, $3)
+             ON CONFLICT (cart_id, book_id)
+             DO UPDATE SET quantity = cart_items.quantity + $3
+             RETURNING *`,
+            [customer_id, book_id, addQty]
+        );
 
-    res.status(201).json({ message: 'Book added to cart', item: insertRes.rows[0] });
-}catch(err){
-      console.error('Error adding to cart:', err.message);
+        res.status(201).json({ message: 'Book added to cart', item: insertRes.rows[0] });
+    } catch (err) {
+        console.error('Error adding to cart:', err.message);
         res.status(500).json({ error: 'Internal Server Error' });
-}
+    }
 });
 
 router.put('/update', async (req, res) => {
     const { customer_id, book_id, updated_qty } = req.body;
 
-    // Object-Level Ownership Check
     if (Number(customer_id) !== req.userId) {
         return res.status(403).json({ error: 'Forbidden: Cannot modify another customer’s cart' });
     }
@@ -170,12 +164,10 @@ router.put('/update', async (req, res) => {
 });
 
 router.delete('/remove', async (req, res) => {
-
     const { customer_id, book_id } = req.body;
-         //check ownership
-  if (Number(customer_id) !== req.userId) {
-    return res.status(403).json({ error: 'Access denied: not your cart' });
-  }
+    if (Number(customer_id) !== req.userId) {
+        return res.status(403).json({ error: 'Access denied: not your cart' });
+    }
 
     try {
         const query = `

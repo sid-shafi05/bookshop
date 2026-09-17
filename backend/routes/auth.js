@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const COOKIE_OPTIONS = {
@@ -10,7 +11,8 @@ const COOKIE_OPTIONS = {
   secure: process.env.NODE_ENV === 'production',
   maxAge: 7 * 24 * 60 * 60 * 1000
 };
-// SIGNUP
+
+// SIGNUP (unchanged — public customer signup)
 router.post('/signup', async (req, res) => {
   const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
@@ -38,15 +40,10 @@ router.post('/signup', async (req, res) => {
 
     const newUser = result.rows[0];
 
-    await client.query(
-      `INSERT INTO customers (customer_id) VALUES ($1)`,
-      [newUser.user_id]
-    );
-    //create the two ddefault things a customer needs
+    await client.query(`INSERT INTO customers (customer_id) VALUES ($1)`, [newUser.user_id]);
     await client.query(`INSERT INTO carts (customer_id) VALUES ($1)`, [newUser.user_id]);
     await client.query(`INSERT INTO wishlists (customer_id, wishlist_name) VALUES ($1, 'My Wishlist')`, [newUser.user_id]);
     await client.query('COMMIT');
-
 
     const token = jwt.sign(
       { userId: newUser.user_id, role: newUser.role },
@@ -56,12 +53,7 @@ router.post('/signup', async (req, res) => {
 
     res.cookie('bookstore_token', token, COOKIE_OPTIONS);
     res.status(201).json({
-      user: {
-        id: newUser.user_id,
-        username: newUser.username,
-        email: newUser.email,
-        role: newUser.role
-      }
+      user: { id: newUser.user_id, username: newUser.username, email: newUser.email, role: newUser.role }
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -75,7 +67,7 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN (unchanged)
 router.post('/login', async (req, res) => {
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
@@ -94,8 +86,6 @@ router.post('/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) return res.status(401).json({ error: 'Invalid email or password' });
 
-
-
     const token = jwt.sign(
       { userId: user.user_id, role: user.role },
       process.env.JWT_SECRET,
@@ -103,7 +93,7 @@ router.post('/login', async (req, res) => {
     );
 
     res.cookie('bookstore_token', token, COOKIE_OPTIONS);
-      res.status(200).json({
+    res.status(200).json({
       message: 'Login successful',
       token,
       user: { id: user.user_id, username: user.username, role: user.role, email: user.email }
@@ -114,7 +104,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Restore the current user from the HttpOnly authentication cookie.
+// GET /auth/me (unchanged)
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const result = await pool.query(
@@ -124,29 +114,22 @@ router.get('/me', verifyToken, async (req, res) => {
     const user = result.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({
-      user: {
-        id: user.user_id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
-    });
+    res.json({ user: { id: user.user_id, username: user.username, email: user.email, role: user.role } });
   } catch (err) {
     console.error('Error restoring authenticated user:', err);
     res.status(500).json({ error: 'Failed to restore session' });
   }
 });
 
-// POST /auth/logout
+// POST /auth/logout (unchanged)
 router.post('/logout', verifyToken, async (req, res) => {
   try {
-    if(req.token){
-    await pool.query(
-      'INSERT INTO token_blacklist (token) VALUES ($1) ON CONFLICT (token) DO NOTHING',
-      [req.token]
-    );
-  }
+    if (req.token) {
+      await pool.query(
+        'INSERT INTO token_blacklist (token) VALUES ($1) ON CONFLICT (token) DO NOTHING',
+        [req.token]
+      );
+    }
     res.clearCookie('bookstore_token', COOKIE_OPTIONS);
     res.status(200).json({ message: 'Logged out successfully. Token invalidated on server.' });
   } catch (err) {
@@ -154,14 +137,42 @@ router.post('/logout', verifyToken, async (req, res) => {
   }
 });
 
+// ====================================================================
+// INVITE-BASED REGISTRATION
+// Shared by deliverymen (created via admin.js -> POST /admin/deliverymen)
+// and, optionally, admins (see admin.js -> POST /admin/admins). The invite
+// row already tells us the role and the email, so one pair of endpoints
+// covers both: the admin who creates the account never has to know the
+// new person's password, and the new person picks their own.
+// ====================================================================
 
-router.post('/deliveryman-setup', async (req, res) => {
-  const token = typeof req.body.token === 'string' ? req.body.token : '';
+// GET /auth/invite/:token -> validate a token before showing the "finish
+// setting up your account" form (prefills email, tells the frontend the role).
+router.get('/invite/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT email, role, expires_at FROM registration_invites
+       WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()`,
+      [req.params.token]
+    );
+    const invite = result.rows[0];
+    if (!invite) return res.status(404).json({ error: 'This invite link is invalid or has expired' });
+    res.json({ email: invite.email, role: invite.role });
+  } catch (err) {
+    console.error('Error checking invite:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /auth/invite/:token/accept -> the invited person sets a username + password.
+// Body: { username, password }
+router.post('/invite/:token/accept', async (req, res) => {
+  const { token } = req.params;
   const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
 
-  if (!token || !username || !password) {
-    return res.status(400).json({ error: 'Token, username, and password are required' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
@@ -170,36 +181,50 @@ router.post('/deliveryman-setup', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    const riderRes = await client.query(
-      `SELECT * FROM deliverymen WHERE invite_token = $1 AND invite_token_expires > NOW() FOR UPDATE`,
+    const inviteRes = await client.query(
+      `SELECT * FROM registration_invites
+       WHERE token = $1 AND used_at IS NULL AND expires_at > NOW() FOR UPDATE`,
       [token]
     );
-    const rider = riderRes.rows[0];
-    if (!rider) {
+    const invite = inviteRes.rows[0];
+    if (!invite) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Invalid or expired invite link' });
+      return res.status(400).json({ error: 'This invite link is invalid or has expired' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const userResult = await client.query(
+      `INSERT INTO users (username, email, password_hash, role)
+       VALUES ($1, $2, $3, $4) RETURNING user_id, username, email, role`,
+      [username, invite.email, passwordHash, invite.role]
+    );
+    const user = userResult.rows[0];
+
+    if (invite.role === 'deliveryman') {
+      await client.query(
+        `UPDATE deliverymen SET user_id = $1, is_active = TRUE WHERE deliveryman_id = $2`,
+        [user.user_id, invite.deliveryman_id]
+      );
+    } else if (invite.role === 'admin') {
+      await client.query(`INSERT INTO admins (admin_id) VALUES ($1)`, [user.user_id]);
+    }
 
     await client.query(
-      `UPDATE users SET username = $1, password_hash = $2 WHERE user_id = $3`,
-      [username, passwordHash, rider.user_id]
+      `UPDATE registration_invites SET used_at = CURRENT_TIMESTAMP WHERE token = $1`,
+      [token]
     );
-
-    await client.query(
-      `UPDATE deliverymen SET invite_token = NULL, invite_token_expires = NULL WHERE deliveryman_id = $1`,
-      [rider.deliveryman_id]
-    );
-
     await client.query('COMMIT');
-    res.status(200).json({ message: 'Account setup complete. You can now log in.' });
+
+    const jwtToken = jwt.sign({ userId: user.user_id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.cookie('bookstore_token', jwtToken, COOKIE_OPTIONS);
+    res.status(201).json({ user });
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.code === '23505') return res.status(409).json({ error: 'That username is already taken' });
-    console.error('Error completing deliveryman setup:', err.message);
-    res.status(500).json({ error: 'Failed to complete setup' });
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That username is already taken' });
+    }
+    console.error('Error accepting invite:', err.message);
+    res.status(500).json({ error: 'Failed to complete registration' });
   } finally {
     client.release();
   }
