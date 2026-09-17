@@ -87,8 +87,8 @@ export const api = {
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   getCurrentUser: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
-  completeDeliverymanSetup: ({ token, username, password }) =>
-    request('/auth/deliveryman-setup', { method: 'POST', body: JSON.stringify({ token, username, password }) }),
+completeDeliverymanSetup: ({ token, username, password }) =>
+  request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
 
   // Cart
   getCart: (customerId) => request(`/cart/${customerId}`),
