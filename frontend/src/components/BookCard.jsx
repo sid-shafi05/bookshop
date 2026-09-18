@@ -32,12 +32,15 @@ export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetail
   const genreText = Array.isArray(book.categories) ? book.categories.join(' • ') : (book.category_name || 'Book');
   const authorText = Array.isArray(book.authors) ? book.authors.join(', ') : (book.author_name || 'Various Authors');
   const hasRealCover = book.cover_url && book.cover_url !== '/images/placeholder-book.jpg';
+  const coverSrc = hasRealCover
+    ? (book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`)
+    : '';
 
   return (
     <div className="book-card book-card-sm" onClick={() => onOpenDetails(book.book_id)} role="button" tabIndex={0}>
       <div className="cover-wrapper cover-wrapper-sm">
         {hasRealCover ? (
-          <img className="book-cover-photo" src={`http://localhost:3000${book.cover_url}`} alt={book.title} />
+          <img className="book-cover-photo" src={coverSrc} alt={book.title} />
         ) : (
           <div className="book-cover-art">
             <span className="art-icon">📖</span>

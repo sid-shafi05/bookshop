@@ -10,16 +10,24 @@ const BASE_SELECT = `
     b.stock_quantity,
     b.cover_url,
     b.description,
+    b.isbn,
     b.publication_year,
+    p.publisher_id,
     p.name AS publisher_name,
     COALESCE(
-      (SELECT array_agg(a.name) FROM book_authors ba
+      (SELECT array_agg(a.author_id ORDER BY a.name) FROM book_authors ba
+        JOIN authors a ON a.author_id = ba.author_id
+        WHERE ba.book_id = b.book_id),
+      '{}'
+    ) AS author_ids,
+    COALESCE(
+      (SELECT array_agg(a.name ORDER BY a.name) FROM book_authors ba
         JOIN authors a ON a.author_id = ba.author_id
         WHERE ba.book_id = b.book_id),
       '{}'
     ) AS authors,
     COALESCE(
-      (SELECT array_agg(c.category_name) FROM book_categories bc
+      (SELECT array_agg(c.category_name ORDER BY c.category_name) FROM book_categories bc
         JOIN categories c ON c.category_id = bc.category_id
         WHERE bc.book_id = b.book_id),
       '{}'
@@ -133,6 +141,94 @@ router.get('/genre/:genre', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching books by genre:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/authors', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT a.author_id, a.name, a.bio, a.nationality, a.photo_url,
+        COUNT(ba.book_id)::int AS book_count
+      FROM authors a
+      LEFT JOIN book_authors ba ON ba.author_id = a.author_id
+      GROUP BY a.author_id, a.name, a.bio, a.nationality, a.photo_url
+      ORDER BY a.name ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching authors:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/authors/:id', async (req, res) => {
+  try {
+    const authorRes = await pool.query(`
+      SELECT a.author_id, a.name, a.bio, a.nationality, a.photo_url,
+        COUNT(ba.book_id)::int AS book_count
+      FROM authors a
+      LEFT JOIN book_authors ba ON ba.author_id = a.author_id
+      WHERE a.author_id = $1
+      GROUP BY a.author_id, a.name, a.bio, a.nationality, a.photo_url
+    `, [req.params.id]);
+
+    if (authorRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Author not found' });
+    }
+
+    const booksRes = await pool.query(`${BASE_SELECT}
+      WHERE EXISTS (
+        SELECT 1 FROM book_authors ba WHERE ba.book_id = b.book_id AND ba.author_id = $1
+      )
+      ORDER BY b.book_id ASC`, [req.params.id]);
+
+    res.json({ author: authorRes.rows[0], books: booksRes.rows });
+  } catch (err) {
+    console.error('Error fetching author details:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/publishers', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.publisher_id, p.name, p.city, p.country, p.website_url,
+        COUNT(b.book_id)::int AS book_count
+      FROM publishers p
+      LEFT JOIN books b ON b.publisher_id = p.publisher_id
+      GROUP BY p.publisher_id, p.name, p.city, p.country, p.website_url
+      ORDER BY p.name ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching publishers:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/publishers/:id', async (req, res) => {
+  try {
+    const publisherRes = await pool.query(`
+      SELECT p.publisher_id, p.name, p.city, p.country, p.website_url,
+        COUNT(b.book_id)::int AS book_count
+      FROM publishers p
+      LEFT JOIN books b ON b.publisher_id = p.publisher_id
+      WHERE p.publisher_id = $1
+      GROUP BY p.publisher_id, p.name, p.city, p.country, p.website_url
+    `, [req.params.id]);
+
+    if (publisherRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Publisher not found' });
+    }
+
+    const booksRes = await pool.query(`${BASE_SELECT}
+      WHERE b.publisher_id = $1
+      ORDER BY b.book_id ASC`, [req.params.id]);
+
+    res.json({ publisher: publisherRes.rows[0], books: booksRes.rows });
+  } catch (err) {
+    console.error('Error fetching publisher details:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

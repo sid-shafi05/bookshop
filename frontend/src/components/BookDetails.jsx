@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 
 export default function BookDetails({ book, customerId, onBack, onAddToCart, onAddToWishlist }) {
@@ -46,9 +47,17 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
     }
   };
 
-  const authors = Array.isArray(book.authors) && book.authors.length > 0 ? book.authors.join(', ') : 'Various Authors';
+  const authorNames = Array.isArray(book.authors) && book.authors.length > 0 ? book.authors : ['Various Authors'];
+  const authorIds = Array.isArray(book.author_ids) ? book.author_ids : [];
+  const authorLinks = authorNames.map((name, index) => ({
+    id: authorIds[index] || null,
+    name
+  }));
   const categories = Array.isArray(book.categories) && book.categories.length > 0 ? book.categories.join(' • ') : 'Uncategorized';
   const hasCover = book.cover_url && book.cover_url !== '/images/placeholder-book.jpg';
+  const coverSrc = hasCover
+    ? (book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`)
+    : '';
 
   return (
     <main className="book-details-page">
@@ -56,7 +65,7 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
       <section className="book-details-main">
         <div className="book-details-cover">
           {hasCover ? (
-            <img src={`http://localhost:3000${book.cover_url}`} alt={book.title} />
+            <img src={coverSrc} alt={book.title} />
           ) : (
             <div className="book-cover-art"><span className="art-icon">📖</span><span className="art-title">{book.title}</span></div>
           )}
@@ -64,7 +73,27 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
         <div className="book-details-info">
           <span className="genre-label">{categories}</span>
           <h1>{book.title}</h1>
-          <p className="author-text">by {authors}</p>
+          <p className="author-text">
+            by{' '}
+            {authorLinks.map((entry, index) => (
+              <span key={`${entry.id || entry.name}-${index}`}>
+                {entry.id ? (
+                  <Link to={`/authors/${entry.id}`}>{entry.name}</Link>
+                ) : (
+                  <span>{entry.name}</span>
+                )}
+                {index < authorLinks.length - 1 ? ', ' : ''}
+              </span>
+            ))}
+          </p>
+          {book.publisher_id ? (
+            <p className="publisher-text">
+              Publisher:{' '}
+              <Link to={`/publishers/${book.publisher_id}`}>{book.publisher_name || 'Publisher'}</Link>
+            </p>
+          ) : (
+            <p className="publisher-text">Publisher: {book.publisher_name || 'Independent Publisher'}</p>
+          )}
           <p className="book-details-rating">★ {Number(reviewData.avg_rating || 0).toFixed(1)} ({reviewData.review_count || 0} reviews)</p>
           <p className="book-details-description">{book.description || 'No description is available for this book yet.'}</p>
           <p>ISBN: {book.isbn || 'Not provided'}</p>

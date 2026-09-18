@@ -13,6 +13,10 @@ import AdminSetup from './components/AdminSetup';
 import CheckoutModal from './components/CheckoutModal';
 import OrdersView from './components/OrdersView';
 import BookDetails from './components/BookDetails';
+import AuthorDirectory from './components/AuthorDirectory';
+import AuthorDetail from './components/AuthorDetail';
+import PublisherDirectory from './components/PublisherDirectory';
+import PublisherDetail from './components/PublisherDetail';
 import './App.css';
 import HomePage from './components/HomePage';
 import AllBooks from './components/AllBooks';
@@ -57,6 +61,7 @@ function BookDetailsRoute({ user, onAddToCart, onAddToWishlist, showToast }) {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const isPublicSetupRoute = location.pathname === '/deliveryman/setup' || location.pathname === '/register/admin';
 
   // Navigation/filter state that's shared between Navbar, HomePage, AllBooks
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -209,20 +214,14 @@ const handleSignOut = async () => {
 
   const handleHeartClick = (book) => (user ? setBookToSave(book) : setShowAuthModal(true));
 
-  // Deliveryman setup uses a plain query-string link from an email, so it's
-  // handled before the auth check / router below, exactly like before.
-  if (location.pathname === '/deliveryman/setup') return <DeliverymanSetup />;
-    // Deliveryman setup uses a plain query-string link from an email, so it's
-  if (location.pathname === '/register/admin') return <AdminSetup />;  
-  if (!authResolved) return <div className="auth-gate-loading">Checking your session...</div>;
+  // Invite-based setup links are public and must be handled before the normal
+  // auth/session redirect logic so they do not fall back to the storefront home.
+  if (isPublicSetupRoute) {
+    if (location.pathname === '/deliveryman/setup') return <DeliverymanSetup />;
+    if (location.pathname === '/register/admin') return <AdminSetup />;
+  }
 
-const handleLogout = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  sessionStorage.clear();
-  setUser(null);
-  setShowAdmin(false);
-};
+  if (!authResolved) return <div className="auth-gate-loading">Checking your session...</div>;
   return (
     <div className="bn-layout">
       {toastMessage && <div className="toast-bar">{toastMessage}</div>}
@@ -308,6 +307,11 @@ const handleLogout = () => {
             />
           }
         />
+
+        <Route path="/authors" element={<AuthorDirectory />} />
+        <Route path="/authors/:authorId" element={<AuthorDetail />} />
+        <Route path="/publishers" element={<PublisherDirectory />} />
+        <Route path="/publishers/:publisherId" element={<PublisherDetail />} />
 
         <Route
           path="/books"

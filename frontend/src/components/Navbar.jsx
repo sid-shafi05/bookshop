@@ -62,6 +62,20 @@ export default function Navbar({
             Books
           </button>
 
+          <button
+            className="nav-books-btn"
+            onClick={() => window.location.href = '/authors'}
+          >
+            Authors
+          </button>
+
+          <button
+            className="nav-books-btn"
+            onClick={() => window.location.href = '/publishers'}
+          >
+            Publishers
+          </button>
+
           {/* WISHLIST */}
           <button
             className="nav-icon-btn"

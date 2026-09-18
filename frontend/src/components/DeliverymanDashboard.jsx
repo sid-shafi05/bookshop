@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
 import NotificationBell from './NotificationBell';
-const ACTIVE_STATUSES = ['picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed'];
+const ACTIVE_STATUSES = ['picked_up', 'in_transit', 'out_for_delivery', 'delivered'];
 
 function formatAddress(o) {
   return (

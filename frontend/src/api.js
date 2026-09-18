@@ -39,11 +39,16 @@ export const api = {
   // Admin
   getAdminBooks: () => request('/admin/books'),
   getAdminCategories: () => request('/admin/categories'),
+  createCategory: (categoryName) => request('/admin/categories', { method: 'POST', body: JSON.stringify({ category_name: categoryName }) }),
+  lookupExternalBook: (q) => request(`/admin/lookup-external-book?q=${encodeURIComponent(q || '')}`),
   createBook: (bookFormData) => requestFormData('/admin/books', bookFormData, 'POST'),
   updateBook: (bookId, bookFormData) => requestFormData(`/admin/books/${bookId}`, bookFormData, 'PUT'),
   deleteBook: (bookId) => request(`/admin/books/${bookId}`, { method: 'DELETE' }),
   getAdminUsers: () => request('/admin/users'),
   createAdmin: (data) => request('/admin/admins', { method: 'POST', body: JSON.stringify(data) }),
+  getAdminCoupons: () => request('/admin/coupons'),
+  createCoupon: (data) => request('/admin/coupons', { method: 'POST', body: JSON.stringify(data) }),
+  updateCoupon: (couponId, data) => request(`/admin/coupons/${couponId}`, { method: 'PUT', body: JSON.stringify(data) }),
   getAdminOrders: () => request('/admin/orders'),
   getAdminOrderDetail: (orderId) => request(`/admin/order-details/${orderId}`),
   updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
@@ -79,6 +84,10 @@ export const api = {
     request(`/books?genre=${encodeURIComponent(genre)}&page=${page}&limit=${limit}`),
   getBook: (bookId) => request(`/books/${bookId}`),
   getGenres: () => request('/books/genres'),
+  getAuthors: () => request('/books/authors'),
+  getAuthorDetail: (authorId) => request(`/books/authors/${authorId}`),
+  getPublishers: () => request('/books/publishers'),
+  getPublisherDetail: (publisherId) => request(`/books/publishers/${publisherId}`),
 
 // Auth
   signup: ({ username, email, password }) =>
