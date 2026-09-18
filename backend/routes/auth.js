@@ -121,6 +121,50 @@ router.get('/me', verifyToken, async (req, res) => {
   }
 });
 
+// PUT /auth/me -> self-service profile edit (works for customer, admin, or
+// deliveryman alike — it's just their own users row).
+// Body: any subset of { username, email, phone, house_no, street, city, postal_code, country }
+router.put('/me', verifyToken, async (req, res) => {
+  const fields = ['username', 'email', 'phone', 'house_no', 'street', 'city', 'postal_code', 'country'];
+  const updates = {};
+  for (const f of fields) {
+    if (req.body[f] !== undefined) updates[f] = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  if (updates.username !== undefined && updates.username === '') {
+    return res.status(400).json({ error: 'Username cannot be empty' });
+  }
+  if (updates.email !== undefined) {
+    updates.email = updates.email.toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(updates.email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address' });
+    }
+  }
+
+  const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 1}`);
+  const values = Object.values(updates);
+  values.push(req.userId);
+
+  try {
+    const result = await pool.query(
+      `UPDATE users SET ${setClauses.join(', ')} WHERE user_id = $${values.length}
+       RETURNING user_id, username, email, role, phone, house_no, street, city, postal_code, country`,
+      values
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'Profile updated', user: result.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That email is already in use by another account' });
+    }
+    console.error('Error updating profile:', err.message);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
 // POST /auth/logout (unchanged)
 router.post('/logout', verifyToken, async (req, res) => {
   try {
@@ -151,13 +195,13 @@ router.post('/logout', verifyToken, async (req, res) => {
 router.get('/invite/:token', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT email, role, expires_at FROM registration_invites
+      `SELECT email, role, invited_name, expires_at FROM registration_invites
        WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()`,
       [req.params.token]
     );
     const invite = result.rows[0];
     if (!invite) return res.status(404).json({ error: 'This invite link is invalid or has expired' });
-    res.json({ email: invite.email, role: invite.role });
+    res.json({ email: invite.email, role: invite.role, name: invite.invited_name || null });
   } catch (err) {
     console.error('Error checking invite:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });

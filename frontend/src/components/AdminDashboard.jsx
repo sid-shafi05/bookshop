@@ -3,18 +3,32 @@ import { useState, useEffect, Fragment } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
 import NotificationBell from './NotificationBell';
+
 const EMPTY_FORM = {
   title: '', isbn: '', price: '', stock_quantity: '', publication_year: '',
   category_id: '',
-  cover_url: '',    // existing cover on the server, when editing a book that already has one
-  cover_file: null, // newly picked File object, if any
-  cover_preview: '', // local blob URL for whatever is currently selected/existing
+  cover_url: '',
+  cover_file: null,
+  cover_preview: '',
 };
+
 const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'cancelled', 'returned'];
-const DELIVERY_STATUSES = ['preparing', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed'];
+const DELIVERY_STATUSES = [
+  'preparing',
+  'picked_up',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'failed'
+];
+
 const DEFAULT_CATEGORIES = [
-  'Fiction & Literature', 'Self-Development', 'Computer Science & Tech',
-  'Sci-Fi & Fantasy', 'Academic & Education', 'Classics'
+  'Fiction & Literature',
+  'Self-Development',
+  'Computer Science & Tech',
+  'Sci-Fi & Fantasy',
+  'Academic & Education',
+  'Classics'
 ];
 
 function formatPaymentMethod(method) {
@@ -22,33 +36,63 @@ function formatPaymentMethod(method) {
     cash_on_delivery: 'Cash on Delivery',
     mock_online: 'Online Payment (Demo)'
   };
+
   return labels[method] || (method ? method.replace(/_/g, ' ') : 'Not specified');
 }
 
 export default function AdminDashboard({ onClose, user }) {
-  const [activeTab, setActiveTab] = useState('books'); // 'books' | 'orders' | 'returns' | 'users' | 'deliverymen'
+  const [activeTab, setActiveTab] = useState('books');
 
   return (
     <main className="admin-wrapper">
       <div className="admin-header-row">
         <h2>Admin Dashboard</h2>
+
         <div className="admin-profile-actions">
-           <NotificationBell user={user} />
+          <NotificationBell user={user} />
+
           <div className="admin-profile">
             <strong>{user?.username}</strong>
             <span>{user?.email}</span>
             <small>ADMIN</small>
           </div>
-          <button className="admin-back-btn" onClick={onClose}>Sign Out</button>
+
+          <button className="admin-back-btn" onClick={onClose}>
+            Sign Out
+          </button>
         </div>
       </div>
 
       <div className="admin-tabs">
-        <TabButton label="Books" active={activeTab === 'books'} onClick={() => setActiveTab('books')} />
-        <TabButton label="Orders" active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
-        <TabButton label="Returns" active={activeTab === 'returns'} onClick={() => setActiveTab('returns')} />
-        <TabButton label="Deliverymen" active={activeTab === 'deliverymen'} onClick={() => setActiveTab('deliverymen')} />
-        <TabButton label="Users" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
+        <TabButton
+          label="Books"
+          active={activeTab === 'books'}
+          onClick={() => setActiveTab('books')}
+        />
+
+        <TabButton
+          label="Orders"
+          active={activeTab === 'orders'}
+          onClick={() => setActiveTab('orders')}
+        />
+
+        <TabButton
+          label="Returns"
+          active={activeTab === 'returns'}
+          onClick={() => setActiveTab('returns')}
+        />
+
+        <TabButton
+          label="Deliverymen"
+          active={activeTab === 'deliverymen'}
+          onClick={() => setActiveTab('deliverymen')}
+        />
+
+        <TabButton
+          label="Users"
+          active={activeTab === 'users'}
+          onClick={() => setActiveTab('users')}
+        />
       </div>
 
       <div className="admin-panel">
@@ -64,15 +108,20 @@ export default function AdminDashboard({ onClose, user }) {
 
 function TabButton({ label, active, onClick }) {
   return (
-    <button className={`admin-tab-btn ${active ? 'active' : ''}`} onClick={onClick}>
+    <button
+      className={`admin-tab-btn ${active ? 'active' : ''}`}
+      onClick={onClick}
+    >
       {label}
     </button>
   );
 }
 
+
 /* ==========================================================================
    BOOKS TAB — full CRUD, with a cover image upload
    ========================================================================== */
+
 function BooksTab() {
   const [books, setBooks] = useState([]);
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -90,7 +139,9 @@ function BooksTab() {
   const loadBooks = async () => {
     try {
       setLoading(true);
+
       const data = await api.getAdminBooks();
+
       setBooks(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
@@ -103,16 +154,39 @@ function BooksTab() {
 
   useEffect(() => {
     loadBooks();
-    api.getAdminCategories().then((data) => setCategoryOptions(data.length ? data : DEFAULT_CATEGORIES.map((category_name, category_id) => ({ category_id: category_id + 1, category_name })))).catch(() => setCategoryOptions(DEFAULT_CATEGORIES.map((category_name, category_id) => ({ category_id: category_id + 1, category_name }))));
+
+    api.getAdminCategories()
+      .then((data) =>
+        setCategoryOptions(
+          data.length
+            ? data
+            : DEFAULT_CATEGORIES.map((category_name, category_id) => ({
+                category_id: category_id + 1,
+                category_name
+              }))
+        )
+      )
+      .catch(() =>
+        setCategoryOptions(
+          DEFAULT_CATEGORIES.map((category_name, category_id) => ({
+            category_id: category_id + 1,
+            category_name
+          }))
+        )
+      );
   }, []);
 
   const buildFormData = (form) => {
     const fd = new FormData();
+
     fd.append('title', form.title);
     fd.append('isbn', form.isbn || '');
     fd.append('price', Number(form.price));
     fd.append('stock_quantity', Number(form.stock_quantity));
-    fd.append('publication_year', form.publication_year ? Number(form.publication_year) : '');
+    fd.append(
+      'publication_year',
+      form.publication_year ? Number(form.publication_year) : ''
+    );
     fd.append('category_id', form.category_id || '');
 
     if (form.cover_file) {
@@ -120,13 +194,16 @@ function BooksTab() {
     } else if (form.cover_url) {
       fd.append('existing_cover_url', form.cover_url);
     }
+
     return fd;
   };
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
+
     try {
       await api.createBook(buildFormData(createForm));
+
       setCreateForm(EMPTY_FORM);
       setShowCreateForm(false);
       loadBooks();
@@ -138,15 +215,17 @@ function BooksTab() {
   const startEdit = (book) => {
     setShowCreateForm(false);
     setEditingId(book.book_id);
+
     setEditForm({
       title: book.title || '',
       isbn: book.isbn || '',
       price: book.price ?? '',
       stock_quantity: book.stock_quantity ?? '',
       publication_year: book.publication_year ?? '',
-      category_id: categoryOptions.find((category) =>
-        (book.categories || []).includes(category.category_name)
-      )?.category_id || '',
+      category_id:
+        categoryOptions.find((category) =>
+          (book.categories || []).includes(category.category_name)
+        )?.category_id || '',
       cover_url: book.cover_url || '',
       cover_file: null,
       cover_preview: '',
@@ -160,8 +239,10 @@ function BooksTab() {
 
   const handleEditSubmit = async (e, bookId) => {
     e.preventDefault();
+
     try {
       await api.updateBook(bookId, buildFormData(editForm));
+
       cancelEdit();
       loadBooks();
     } catch (err) {
@@ -171,11 +252,15 @@ function BooksTab() {
 
   const handleDelete = async (bookId, title) => {
     if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+
     try {
       await api.deleteBook(bookId);
       loadBooks();
     } catch (err) {
-      alert(err.message || 'Failed to delete book. It may have existing orders attached.');
+      alert(
+        err.message ||
+        'Failed to delete book. It may have existing orders attached.'
+      );
     }
   };
 
@@ -185,21 +270,43 @@ function BooksTab() {
     return 'ok';
   };
 
-  if (loading) return <p className="admin-state-msg">Loading books...</p>;
-  if (error) return <p className="admin-state-msg error">{error}</p>;
+  if (loading) {
+    return <p className="admin-state-msg">Loading books...</p>;
+  }
+
+  if (error) {
+    return <p className="admin-state-msg error">{error}</p>;
+  }
 
   const visibleBooks = books.filter((book) => {
     const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query || [book.title, book.isbn, ...(book.categories || [])]
-      .some((value) => String(value || '').toLowerCase().includes(query));
-    const matchesCategory = selectedCategory === 'All' || (book.categories || []).includes(selectedCategory);
+
+    const matchesSearch =
+      !query ||
+      [book.title, book.isbn, ...(book.categories || [])]
+        .some((value) =>
+          String(value || '').toLowerCase().includes(query)
+        );
+
+    const matchesCategory =
+      selectedCategory === 'All' ||
+      (book.categories || []).includes(selectedCategory);
+
     return matchesSearch && matchesCategory;
   });
 
   return (
     <div>
       <div className="admin-panel-toolbar">
-        <h3>Book Inventory ({visibleBooks.length}{visibleBooks.length !== books.length ? ` of ${books.length}` : ''})</h3>
+        <h3>
+          Book Inventory (
+          {visibleBooks.length}
+          {visibleBooks.length !== books.length
+            ? ` of ${books.length}`
+            : ''}
+          )
+        </h3>
+
         <div className="admin-books-tools">
           <input
             type="search"
@@ -207,26 +314,52 @@ function BooksTab() {
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
-          <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}>
+
+          <select
+            value={selectedCategory}
+            onChange={(event) => setSelectedCategory(event.target.value)}
+          >
             <option value="All">All categories</option>
+
             {categoryOptions.map((category) => (
-              <option key={category.category_id} value={category.category_name}>{category.category_name}</option>
+              <option
+                key={category.category_id}
+                value={category.category_name}
+              >
+                {category.category_name}
+              </option>
             ))}
           </select>
         </div>
+
         <button
-          className={`admin-primary-btn ${showCreateForm ? 'cancel' : ''}`}
-          onClick={() => { setEditingId(null); setShowCreateForm(!showCreateForm); }}
+          className={`admin-primary-btn ${
+            showCreateForm ? 'cancel' : ''
+          }`}
+          onClick={() => {
+            setEditingId(null);
+            setShowCreateForm(!showCreateForm);
+          }}
         >
           {showCreateForm ? 'Cancel' : '+ Add New Book'}
         </button>
       </div>
 
       {showCreateForm && (
-        <form onSubmit={handleCreateSubmit} className="admin-form-card">
-          <BookFormFields form={createForm} setForm={setCreateForm} categories={categoryOptions} />
+        <form
+          onSubmit={handleCreateSubmit}
+          className="admin-form-card"
+        >
+          <BookFormFields
+            form={createForm}
+            setForm={setCreateForm}
+            categories={categoryOptions}
+          />
+
           <div className="admin-form-actions">
-            <button type="submit" className="btn-save">Create Book</button>
+            <button type="submit" className="btn-save">
+              Create Book
+            </button>
           </div>
         </form>
       )}
@@ -242,19 +375,42 @@ function BooksTab() {
             <th>Actions</th>
           </tr>
         </thead>
+
         <tbody>
           {books.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No books found.</td></tr>
+            <tr>
+              <td colSpan={6} className="admin-empty-row">
+                No books found.
+              </td>
+            </tr>
           ) : (
             visibleBooks.map((book) =>
               editingId === book.book_id ? (
                 <tr key={book.book_id}>
                   <td colSpan={6} className="edit-row-cell">
-                    <form onSubmit={(e) => handleEditSubmit(e, book.book_id)}>
-                      <BookFormFields form={editForm} setForm={setEditForm} categories={categoryOptions} />
+                    <form
+                      onSubmit={(e) =>
+                        handleEditSubmit(e, book.book_id)
+                      }
+                    >
+                      <BookFormFields
+                        form={editForm}
+                        setForm={setEditForm}
+                        categories={categoryOptions}
+                      />
+
                       <div className="admin-form-actions">
-                        <button type="submit" className="btn-save">Save Changes</button>
-                        <button type="button" className="btn-cancel" onClick={cancelEdit}>Cancel</button>
+                        <button type="submit" className="btn-save">
+                          Save Changes
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-cancel"
+                          onClick={cancelEdit}
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </form>
                   </td>
@@ -270,20 +426,44 @@ function BooksTab() {
                       />
                     )}
                   </td>
+
                   <td>{book.book_id}</td>
-                  <td className="admin-cell-title">{book.title}</td>
-                  <td>Tk {Number(book.price).toFixed(2)}</td>
+
+                  <td className="admin-cell-title">
+                    {book.title}
+                  </td>
+
                   <td>
-                    <span className={`admin-stock-pill ${stockPillClass(book.stock_quantity)}`}>
+                    Tk {Number(book.price).toFixed(2)}
+                  </td>
+
+                  <td>
+                    <span
+                      className={`admin-stock-pill ${
+                        stockPillClass(book.stock_quantity)
+                      }`}
+                    >
                       {book.stock_quantity} in stock
                     </span>
                   </td>
+
                   <td>
                     <div className="admin-actions-cell">
-                      <button className="admin-icon-btn" onClick={() => startEdit(book)}>Edit</button>
+                      <button
+                        className="admin-icon-btn"
+                        onClick={() => startEdit(book)}
+                      >
+                        Edit
+                      </button>
+
                       <button
                         className="admin-icon-btn danger"
-                        onClick={() => handleDelete(book.book_id, book.title)}
+                        onClick={() =>
+                          handleDelete(
+                            book.book_id,
+                            book.title
+                          )
+                        }
                       >
                         Delete
                       </button>
@@ -299,43 +479,102 @@ function BooksTab() {
   );
 }
 
+
 function BookFormFields({ form, setForm, categories }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
+
     if (!file) return;
+
     const previewUrl = URL.createObjectURL(file);
-    setForm({ ...form, cover_file: file, cover_preview: previewUrl });
+
+    setForm({
+      ...form,
+      cover_file: file,
+      cover_preview: previewUrl
+    });
   };
 
   return (
     <div className="admin-form-grid">
       <input
-        placeholder="Title" required value={form.title}
-        onChange={(e) => setForm({ ...form, title: e.target.value })}
+        placeholder="Title"
+        required
+        value={form.title}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            title: e.target.value
+          })
+        }
       />
+
       <input
-        placeholder="ISBN" value={form.isbn}
-        onChange={(e) => setForm({ ...form, isbn: e.target.value })}
+        placeholder="ISBN"
+        value={form.isbn}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            isbn: e.target.value
+          })
+        }
       />
+
       <input
-        placeholder="Price" type="number" step="0.01" required value={form.price}
-        onChange={(e) => setForm({ ...form, price: e.target.value })}
+        placeholder="Price"
+        type="number"
+        step="0.01"
+        required
+        value={form.price}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            price: e.target.value
+          })
+        }
       />
+
       <input
-        placeholder="Stock Qty" type="number" required value={form.stock_quantity}
-        onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
+        placeholder="Stock Qty"
+        type="number"
+        required
+        value={form.stock_quantity}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            stock_quantity: e.target.value
+          })
+        }
       />
+
       <input
-        placeholder="Pub. Year" type="number" value={form.publication_year}
-        onChange={(e) => setForm({ ...form, publication_year: e.target.value })}
+        placeholder="Pub. Year"
+        type="number"
+        value={form.publication_year}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            publication_year: e.target.value
+          })
+        }
       />
+
       <select
         value={form.category_id}
-        onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            category_id: e.target.value
+          })
+        }
       >
         <option value="">No category</option>
+
         {categories.map((category) => (
-          <option key={category.category_id} value={category.category_id}>
+          <option
+            key={category.category_id}
+            value={category.category_id}
+          >
             {category.category_name}
           </option>
         ))}
@@ -351,20 +590,29 @@ function BookFormFields({ form, setForm, categories }) {
       {(form.cover_preview || form.cover_url) && (
         <div className="admin-cover-preview">
           <img
-            src={form.cover_preview || `http://localhost:3000${form.cover_url}`}
+            src={
+              form.cover_preview ||
+              `http://localhost:3000${form.cover_url}`
+            }
             alt="Cover preview"
           />
-          <span>{form.cover_file ? form.cover_file.name : 'Current cover'}</span>
+
+          <span>
+            {form.cover_file
+              ? form.cover_file.name
+              : 'Current cover'}
+          </span>
         </div>
       )}
     </div>
   );
 }
 
+
 /* ==========================================================================
-   ORDERS TAB — status flow: confirmed -> processing -> assign delivery
-   (shipped) -> advance delivery sub-status -> delivered
+   ORDERS TAB — status flow
    ========================================================================== */
+
 function OrdersTab() {
   const [orders, setOrders] = useState([]);
   const [deliverymen, setDeliverymen] = useState([]);
@@ -375,12 +623,19 @@ function OrdersTab() {
   const [error, setError] = useState('');
 
   const [assigningId, setAssigningId] = useState(null);
-  const [assignForm, setAssignForm] = useState({ deliveryman_id: '', shipping_method: '', tracking_number: '' });
+
+  const [assignForm, setAssignForm] = useState({
+    deliveryman_id: '',
+    shipping_method: '',
+    tracking_number: ''
+  });
 
   const loadOrders = async () => {
     try {
       setLoading(true);
+
       const data = await api.getAdminOrders();
+
       setOrders(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
@@ -394,13 +649,20 @@ function OrdersTab() {
   const loadDeliverymen = async () => {
     try {
       const data = await api.getDeliverymen();
-      setDeliverymen((Array.isArray(data) ? data : []).filter((d) => d.is_active));
+
+      setDeliverymen(
+        (Array.isArray(data) ? data : [])
+          .filter((d) => d.is_active)
+      );
     } catch (err) {
       console.error('Failed to load deliverymen:', err);
     }
   };
 
-  useEffect(() => { loadOrders(); loadDeliverymen(); }, []);
+  useEffect(() => {
+    loadOrders();
+    loadDeliverymen();
+  }, []);
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -416,14 +678,27 @@ function OrdersTab() {
       setExpandedId(null);
       return;
     }
+
     setExpandedId(orderId);
+
     if (detailCache[orderId]) return;
+
     setDetailLoadingId(orderId);
+
     try {
       const detail = await api.getAdminOrderDetail(orderId);
-      setDetailCache((previous) => ({ ...previous, [orderId]: detail }));
+
+      setDetailCache((previous) => ({
+        ...previous,
+        [orderId]: detail
+      }));
     } catch (err) {
-      setDetailCache((previous) => ({ ...previous, [orderId]: { error: err.message } }));
+      setDetailCache((previous) => ({
+        ...previous,
+        [orderId]: {
+          error: err.message
+        }
+      }));
     } finally {
       setDetailLoadingId(null);
     }
@@ -431,14 +706,25 @@ function OrdersTab() {
 
   const startAssign = (order) => {
     setAssigningId(order.order_id);
-    setAssignForm({ deliveryman_id: deliverymen[0]?.deliveryman_id || '', shipping_method: 'Standard Delivery', tracking_number: '' });
+
+    setAssignForm({
+      deliveryman_id:
+        deliverymen[0]?.deliveryman_id || '',
+      shipping_method: 'Standard Delivery',
+      tracking_number: ''
+    });
   };
 
   const submitAssign = async (e, orderId) => {
     e.preventDefault();
-    if (!assignForm.deliveryman_id) return alert('Please choose a deliveryman');
+
+    if (!assignForm.deliveryman_id) {
+      return alert('Please choose a deliveryman');
+    }
+
     try {
       await api.shipOrder(orderId, assignForm);
+
       setAssigningId(null);
       loadOrders();
     } catch (err) {
@@ -446,23 +732,47 @@ function OrdersTab() {
     }
   };
 
-  const handleDeliveryStatusChange = async (order, newStatus) => {
+  const handleDeliveryStatusChange = async (
+    order,
+    newStatus
+  ) => {
     try {
-      await api.updateDeliveryStatus(order.delivery_id, newStatus);
+      await api.updateDeliveryStatus(
+        order.delivery_id,
+        newStatus
+      );
+
       loadOrders();
     } catch (err) {
-      alert(err.message || 'Failed to update delivery status');
+      alert(
+        err.message ||
+        'Failed to update delivery status'
+      );
     }
   };
 
-  if (loading) return <p className="admin-state-msg">Loading orders...</p>;
-  if (error) return <p className="admin-state-msg error">{error}</p>;
+  if (loading) {
+    return (
+      <p className="admin-state-msg">
+        Loading orders...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="admin-state-msg error">
+        {error}
+      </p>
+    );
+  }
 
   return (
     <div>
       <div className="admin-panel-toolbar">
         <h3>Orders ({orders.length})</h3>
       </div>
+
       <table className="admin-table">
         <thead>
           <tr>
@@ -474,120 +784,393 @@ function OrdersTab() {
             <th>Fulfillment</th>
           </tr>
         </thead>
+
         <tbody>
           {orders.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No orders found.</td></tr>
+            <tr>
+              <td
+                colSpan={6}
+                className="admin-empty-row"
+              >
+                No orders found.
+              </td>
+            </tr>
           ) : (
             orders.map((order) => (
               <Fragment key={order.order_id}>
-                <tr className="admin-order-row" onClick={() => toggleOrderDetails(order.order_id)}>
+                <tr
+                  className="admin-order-row"
+                  onClick={() =>
+                    toggleOrderDetails(order.order_id)
+                  }
+                >
                   <td>#{order.order_id}</td>
+
                   <td>
-                    <div className="admin-cell-title">{order.username}</div>
-                    <div style={{ fontSize: '0.78rem', color: '#8c827a' }}>{order.email}</div>
+                    <div className="admin-cell-title">
+                      {order.username}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: '0.78rem',
+                        color: '#8c827a'
+                      }}
+                    >
+                      {order.email}
+                    </div>
                   </td>
-                  <td>Tk {Number(order.total_amount).toFixed(2)}</td>
+
                   <td>
-                    <span className={`admin-stock-pill ${order.payment_status === 'paid' ? 'ok' : 'low'}`}>
+                    Tk {Number(order.total_amount).toFixed(2)}
+                  </td>
+
+                  <td>
+                    <span
+                      className={`admin-stock-pill ${
+                        order.payment_status === 'paid'
+                          ? 'ok'
+                          : 'low'
+                      }`}
+                    >
                       {order.payment_status}
                     </span>
                   </td>
+
                   <td>
-                    {['shipped', 'delivered'].includes(order.status) ? (
-                      <span className="admin-status-select" style={{ display: 'inline-block', cursor: 'default' }}>
+                    {['shipped', 'delivered'].includes(
+                      order.status
+                    ) ? (
+                      <span
+                        className="admin-status-select"
+                        style={{
+                          display: 'inline-block',
+                          cursor: 'default'
+                        }}
+                      >
                         {order.status}
                       </span>
                     ) : (
                       <select
                         className="admin-status-select"
                         value={order.status}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(e) => handleStatusChange(order.order_id, e.target.value)}
+                        onClick={(event) =>
+                          event.stopPropagation()
+                        }
+                        onChange={(e) =>
+                          handleStatusChange(
+                            order.order_id,
+                            e.target.value
+                          )
+                        }
                       >
                         {ORDER_STATUSES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
                         ))}
                       </select>
                     )}
                   </td>
+
                   <td>
-                    {['confirmed', 'processing'].includes(order.status) &&
-                      (order.payment_status === 'paid' || order.payment_method === 'cash_on_delivery') && (
-                      <button className="admin-icon-btn" onClick={(event) => { event.stopPropagation(); startAssign(order); }}>
-                        Assign Delivery
-                      </button>
-                    )}
-                    {order.status === 'pending' && (
-                      <span style={{ fontSize: '0.78rem', color: '#8c827a' }}>Awaiting payment</span>
-                    )}
-                    {order.status === 'shipped' && order.delivery_id && (
-                      <div>
-                        <select
-                          className="admin-status-select"
-                          value={order.delivery_status || 'picked_up'}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(e) => handleDeliveryStatusChange(order, e.target.value)}
+                    {['confirmed', 'processing'].includes(
+                      order.status
+                    ) &&
+                      (
+                        order.payment_status === 'paid' ||
+                        order.payment_method ===
+                          'cash_on_delivery'
+                      ) && (
+                        <button
+                          className="admin-icon-btn"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startAssign(order);
+                          }}
                         >
-                          {DELIVERY_STATUSES.map((s) => (
-                            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                          ))}
-                        </select>
-                        <div style={{ fontSize: '0.72rem', color: '#8c827a', marginTop: 4 }}>
-                          {order.rider_name} · {order.rider_phone}
-                        </div>
-                      </div>
+                          Assign Delivery
+                        </button>
+                      )}
+
+                    {order.status === 'pending' && (
+                      <span
+                        style={{
+                          fontSize: '0.78rem',
+                          color: '#8c827a'
+                        }}
+                      >
+                        Awaiting payment
+                      </span>
                     )}
+
+                    {order.status === 'shipped' &&
+                      order.delivery_id && (
+                        <div>
+                          <select
+                            className="admin-status-select"
+                            value={
+                              order.delivery_status ||
+                              'picked_up'
+                            }
+                            onClick={(event) =>
+                              event.stopPropagation()
+                            }
+                            onChange={(e) =>
+                              handleDeliveryStatusChange(
+                                order,
+                                e.target.value
+                              )
+                            }
+                          >
+                            {DELIVERY_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s.replace(/_/g, ' ')}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div
+                            style={{
+                              fontSize: '0.72rem',
+                              color: '#8c827a',
+                              marginTop: 4
+                            }}
+                          >
+                            {order.rider_name} ·{' '}
+                            {order.rider_phone}
+                          </div>
+                        </div>
+                      )}
+
                     {order.status === 'delivered' && (
-                      <span className="admin-stock-pill ok">Delivered</span>
+                      <span className="admin-stock-pill ok">
+                        Delivered
+                      </span>
                     )}
                   </td>
                 </tr>
+
                 {expandedId === order.order_id && (
                   <tr>
-                    <td colSpan={6} className="admin-order-detail-cell" onClick={(event) => event.stopPropagation()}>
-                      {detailLoadingId === order.order_id && <p>Loading order details...</p>}
-                      {detailCache[order.order_id]?.error && <p className="admin-state-msg error">{detailCache[order.order_id].error}</p>}
-                      {detailCache[order.order_id] && !detailCache[order.order_id].error && (
-                        <div className="admin-order-detail">
-                          <p><strong>Payment method:</strong> {formatPaymentMethod(detailCache[order.order_id].order.payment_method)}</p>
-                          <p><strong>Shipping address:</strong> {[detailCache[order.order_id].order.shipping_house_no, detailCache[order.order_id].order.shipping_street, detailCache[order.order_id].order.shipping_city, detailCache[order.order_id].order.shipping_country].filter(Boolean).join(', ') || 'Not provided'}</p>
-                          <h4>Items</h4>
-                          {detailCache[order.order_id].items.map((item) => (
-                            <div className="admin-order-item" key={item.order_item_id}>
-                              <span>{item.title}</span><span>× {item.quantity}</span><span>Tk {Number(item.unit_price).toFixed(2)}</span>
-                            </div>
-                          ))}
-                          {detailCache[order.order_id].delivery && <p><strong>Delivery:</strong> {detailCache[order.order_id].delivery.deliveryman_name || 'Unassigned'}{detailCache[order.order_id].delivery.tracking_number ? ` · ${detailCache[order.order_id].delivery.tracking_number}` : ''}</p>}
-                        </div>
+                    <td
+                      colSpan={6}
+                      className="admin-order-detail-cell"
+                      onClick={(event) =>
+                        event.stopPropagation()
+                      }
+                    >
+                      {detailLoadingId ===
+                        order.order_id && (
+                        <p>
+                          Loading order details...
+                        </p>
                       )}
+
+                      {detailCache[order.order_id]
+                        ?.error && (
+                        <p className="admin-state-msg error">
+                          {
+                            detailCache[order.order_id]
+                              .error
+                          }
+                        </p>
+                      )}
+
+                      {detailCache[order.order_id] &&
+                        !detailCache[order.order_id]
+                          .error && (
+                          <div className="admin-order-detail">
+                            <p>
+                              <strong>
+                                Payment method:
+                              </strong>{' '}
+                              {formatPaymentMethod(
+                                detailCache[
+                                  order.order_id
+                                ].order.payment_method
+                              )}
+                            </p>
+
+                            <p>
+                              <strong>
+                                Shipping address:
+                              </strong>{' '}
+                              {[
+                                detailCache[
+                                  order.order_id
+                                ].order
+                                  .shipping_house_no,
+                                detailCache[
+                                  order.order_id
+                                ].order
+                                  .shipping_street,
+                                detailCache[
+                                  order.order_id
+                                ].order
+                                  .shipping_city,
+                                detailCache[
+                                  order.order_id
+                                ].order
+                                  .shipping_country
+                              ]
+                                .filter(Boolean)
+                                .join(', ') ||
+                                'Not provided'}
+                            </p>
+
+                            <h4>Items</h4>
+
+                            {detailCache[
+                              order.order_id
+                            ].items.map((item) => (
+                              <div
+                                className="admin-order-item"
+                                key={item.order_item_id}
+                              >
+                                <span>
+                                  {item.title}
+                                </span>
+
+                                <span>
+                                  × {item.quantity}
+                                </span>
+
+                                <span>
+                                  Tk{' '}
+                                  {Number(
+                                    item.unit_price
+                                  ).toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+
+                            {detailCache[
+                              order.order_id
+                            ].delivery && (
+                              <p>
+                                <strong>
+                                  Delivery:
+                                </strong>{' '}
+                                {detailCache[
+                                  order.order_id
+                                ].delivery
+                                  .deliveryman_name ||
+                                  'Unassigned'}
+
+                                {detailCache[
+                                  order.order_id
+                                ].delivery
+                                  .tracking_number
+                                  ? ` · ${
+                                      detailCache[
+                                        order.order_id
+                                      ].delivery
+                                        .tracking_number
+                                    }`
+                                  : ''}
+                              </p>
+                            )}
+                          </div>
+                        )}
                     </td>
                   </tr>
                 )}
+
                 {assigningId === order.order_id && (
                   <tr>
-                    <td colSpan={6} className="edit-row-cell">
-                      <form onSubmit={(e) => submitAssign(e, order.order_id)} className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                    <td
+                      colSpan={6}
+                      className="edit-row-cell"
+                    >
+                      <form
+                        onSubmit={(e) =>
+                          submitAssign(
+                            e,
+                            order.order_id
+                          )
+                        }
+                        className="admin-form-grid"
+                        style={{
+                          gridTemplateColumns:
+                            'repeat(3, 1fr)'
+                        }}
+                      >
                         <select
-                          value={assignForm.deliveryman_id}
-                          onChange={(e) => setAssignForm({ ...assignForm, deliveryman_id: e.target.value })}
+                          value={
+                            assignForm.deliveryman_id
+                          }
+                          onChange={(e) =>
+                            setAssignForm({
+                              ...assignForm,
+                              deliveryman_id:
+                                e.target.value
+                            })
+                          }
                           required
                         >
-                          <option value="" disabled>Select deliveryman</option>
+                          <option
+                            value=""
+                            disabled
+                          >
+                            Select deliveryman
+                          </option>
+
                           {deliverymen.map((d) => (
-                            <option key={d.deliveryman_id} value={d.deliveryman_id}>{d.name} ({d.phone})</option>
+                            <option
+                              key={d.deliveryman_id}
+                              value={d.deliveryman_id}
+                            >
+                              {d.name} ({d.phone})
+                            </option>
                           ))}
                         </select>
+
                         <input
-                          placeholder="Shipping method" value={assignForm.shipping_method}
-                          onChange={(e) => setAssignForm({ ...assignForm, shipping_method: e.target.value })}
+                          placeholder="Shipping method"
+                          value={
+                            assignForm.shipping_method
+                          }
+                          onChange={(e) =>
+                            setAssignForm({
+                              ...assignForm,
+                              shipping_method:
+                                e.target.value
+                            })
+                          }
                         />
+
                         <input
-                          placeholder="Tracking # (optional, auto-generated if blank)" value={assignForm.tracking_number}
-                          onChange={(e) => setAssignForm({ ...assignForm, tracking_number: e.target.value })}
+                          placeholder="Tracking # (optional, auto-generated if blank)"
+                          value={
+                            assignForm.tracking_number
+                          }
+                          onChange={(e) =>
+                            setAssignForm({
+                              ...assignForm,
+                              tracking_number:
+                                e.target.value
+                            })
+                          }
                         />
+
                         <div className="admin-form-actions">
-                          <button type="submit" className="btn-save">Confirm &amp; Ship</button>
-                          <button type="button" className="btn-cancel" onClick={() => setAssigningId(null)}>Cancel</button>
+                          <button
+                            type="submit"
+                            className="btn-save"
+                          >
+                            Confirm &amp; Ship
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn-cancel"
+                            onClick={() =>
+                              setAssigningId(null)
+                            }
+                          >
+                            Cancel
+                          </button>
                         </div>
                       </form>
                     </td>
@@ -602,9 +1185,11 @@ function OrdersTab() {
   );
 }
 
+
 /* ==========================================================================
-   RETURNS TAB — approve or reject return requests
+   RETURNS TAB
    ========================================================================== */
+
 function ReturnsTab() {
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -613,38 +1198,63 @@ function ReturnsTab() {
   const load = async () => {
     try {
       setLoading(true);
+
       const data = await api.getAdminReturns();
+
       setReturns(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
       console.error('Failed to load returns:', err);
-      setError(err.message || 'Failed to load returns.');
+      setError(
+        err.message || 'Failed to load returns.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const resolve = async (id, decision) => {
     try {
       await api.resolveReturn(id, decision);
       loadReturnsQuiet();
     } catch (err) {
-      alert(err.message || 'Failed to update return');
+      alert(
+        err.message ||
+        'Failed to update return'
+      );
     }
   };
 
   const loadReturnsQuiet = () => load();
 
-  if (loading) return <p className="admin-state-msg">Loading returns...</p>;
-  if (error) return <p className="admin-state-msg error">{error}</p>;
+  if (loading) {
+    return (
+      <p className="admin-state-msg">
+        Loading returns...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="admin-state-msg error">
+        {error}
+      </p>
+    );
+  }
 
   return (
     <div>
       <div className="admin-panel-toolbar">
-        <h3>Return Requests ({returns.length})</h3>
+        <h3>
+          Return Requests ({returns.length})
+        </h3>
       </div>
+
       <table className="admin-table">
         <thead>
           <tr>
@@ -656,39 +1266,96 @@ function ReturnsTab() {
             <th>Actions</th>
           </tr>
         </thead>
+
         <tbody>
           {returns.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No return requests.</td></tr>
+            <tr>
+              <td
+                colSpan={6}
+                className="admin-empty-row"
+              >
+                No return requests.
+              </td>
+            </tr>
           ) : (
             returns.map((r) => (
               <tr key={r.return_id}>
                 <td>#{r.order_id}</td>
+
                 <td>
-                  <div className="admin-cell-title">{r.username}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#8c827a' }}>{r.email}</div>
+                  <div className="admin-cell-title">
+                    {r.username}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: '0.78rem',
+                      color: '#8c827a'
+                    }}
+                  >
+                    {r.email}
+                  </div>
                 </td>
+
                 <td>{r.reason}</td>
-                <td>Tk {Number(r.total_amount).toFixed(2)}</td>
+
                 <td>
-                  <span className={`admin-stock-pill ${
-                    r.status === 'approved' ? 'ok' : r.status === 'rejected' ? 'out' : 'low'
-                  }`}>
+                  Tk {Number(r.total_amount).toFixed(2)}
+                </td>
+
+                <td>
+                  <span
+                    className={`admin-stock-pill ${
+                      r.status === 'approved'
+                        ? 'ok'
+                        : r.status === 'rejected'
+                        ? 'out'
+                        : 'low'
+                    }`}
+                  >
                     {r.status}
                   </span>
                 </td>
+
                 <td>
                   {r.status === 'pending' ? (
                     <div className="admin-actions-cell">
-                      <button className="admin-icon-btn" onClick={() => resolve(r.return_id, 'approved')}>
+                      <button
+                        className="admin-icon-btn"
+                        onClick={() =>
+                          resolve(
+                            r.return_id,
+                            'approved'
+                          )
+                        }
+                      >
                         Approve
                       </button>
-                      <button className="admin-icon-btn danger" onClick={() => resolve(r.return_id, 'rejected')}>
+
+                      <button
+                        className="admin-icon-btn danger"
+                        onClick={() =>
+                          resolve(
+                            r.return_id,
+                            'rejected'
+                          )
+                        }
+                      >
                         Reject
                       </button>
                     </div>
                   ) : (
-                    <span style={{ fontSize: '0.78rem', color: '#8c827a' }}>
-                      {r.resolved_at ? new Date(r.resolved_at).toLocaleDateString() : '—'}
+                    <span
+                      style={{
+                        fontSize: '0.78rem',
+                        color: '#8c827a'
+                      }}
+                    >
+                      {r.resolved_at
+                        ? new Date(
+                            r.resolved_at
+                          ).toLocaleDateString()
+                        : '—'}
                     </span>
                   )}
                 </td>
@@ -701,51 +1368,82 @@ function ReturnsTab() {
   );
 }
 
+
 /* ==========================================================================
-   DELIVERYMEN TAB — CRUD for the pool of riders
+   DELIVERYMEN TAB
    ========================================================================== */
-const EMPTY_RIDER_FORM = { name: '', phone: '', vehicle_type: '', email: '', is_active: true };
+
+const EMPTY_RIDER_FORM = {
+  name: '',
+  phone: '',
+  vehicle_type: '',
+  email: '',
+  is_active: true
+};
 
 function DeliverymenTab() {
   const [riders, setRiders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState(EMPTY_RIDER_FORM);
+  const [showCreateForm, setShowCreateForm] =
+    useState(false);
+
+  const [createForm, setCreateForm] =
+    useState(EMPTY_RIDER_FORM);
+
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(EMPTY_RIDER_FORM);
+  const [editForm, setEditForm] =
+    useState(EMPTY_RIDER_FORM);
 
   const loadRiders = async () => {
     try {
       setLoading(true);
+
       const data = await api.getDeliverymen();
+
       setRiders(Array.isArray(data) ? data : []);
       setError('');
     } catch (err) {
-      console.error('Failed to load deliverymen:', err);
-      setError(err.message || 'Failed to load deliverymen.');
+      console.error(
+        'Failed to load deliverymen:',
+        err
+      );
+
+      setError(
+        err.message ||
+        'Failed to load deliverymen.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadRiders(); }, []);
+  useEffect(() => {
+    loadRiders();
+  }, []);
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
+
     try {
       await api.createDeliveryman(createForm);
+
       setCreateForm(EMPTY_RIDER_FORM);
       setShowCreateForm(false);
+
       loadRiders();
     } catch (err) {
-      alert(err.message || 'Failed to add deliveryman');
+      alert(
+        err.message ||
+        'Failed to add deliveryman'
+      );
     }
   };
 
   const startEdit = (rider) => {
     setShowCreateForm(false);
     setEditingId(rider.deliveryman_id);
+
     setEditForm({
       name: rider.name,
       phone: rider.phone,
@@ -757,62 +1455,158 @@ function DeliverymenTab() {
 
   const handleEditSubmit = async (e, id) => {
     e.preventDefault();
+
     try {
       await api.updateDeliveryman(id, editForm);
+
       setEditingId(null);
       loadRiders();
     } catch (err) {
-      alert(err.message || 'Failed to update deliveryman');
+      alert(
+        err.message ||
+        'Failed to update deliveryman'
+      );
     }
   };
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`Remove "${name}" from the delivery team?`)) return;
+    if (
+      !window.confirm(
+        `Remove "${name}" from the delivery team?`
+      )
+    ) {
+      return;
+    }
+
     try {
       await api.deleteDeliveryman(id);
       loadRiders();
     } catch (err) {
-      alert(err.message || 'Failed to remove deliveryman');
+      alert(
+        err.message ||
+        'Failed to remove deliveryman'
+      );
     }
   };
 
-  if (loading) return <p className="admin-state-msg">Loading deliverymen...</p>;
-  if (error) return <p className="admin-state-msg error">{error}</p>;
+  if (loading) {
+    return (
+      <p className="admin-state-msg">
+        Loading deliverymen...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="admin-state-msg error">
+        {error}
+      </p>
+    );
+  }
 
   return (
     <div>
       <div className="admin-panel-toolbar">
-        <h3>Delivery Team ({riders.length})</h3>
+        <h3>
+          Delivery Team ({riders.length})
+        </h3>
+
         <button
-          className={`admin-primary-btn ${showCreateForm ? 'cancel' : ''}`}
-          onClick={() => { setEditingId(null); setShowCreateForm(!showCreateForm); }}
+          className={`admin-primary-btn ${
+            showCreateForm ? 'cancel' : ''
+          }`}
+          onClick={() => {
+            setEditingId(null);
+            setShowCreateForm(!showCreateForm);
+          }}
         >
-          {showCreateForm ? 'Cancel' : '+ Add Deliveryman'}
+          {showCreateForm
+            ? 'Cancel'
+            : '+ Add Deliveryman'}
         </button>
       </div>
 
       {showCreateForm && (
-        <form onSubmit={handleCreateSubmit} className="admin-form-card">
-          <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-            <input placeholder="Full Name" required value={createForm.name}
-              onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
-            <input placeholder="Phone" required value={createForm.phone}
-              onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} />
+        <form
+          onSubmit={handleCreateSubmit}
+          className="admin-form-card"
+        >
+          <div
+            className="admin-form-grid"
+            style={{
+              gridTemplateColumns:
+                'repeat(4, 1fr)'
+            }}
+          >
+            <input
+              placeholder="Full Name"
+              required
+              value={createForm.name}
+              onChange={(e) =>
+                setCreateForm({
+                  ...createForm,
+                  name: e.target.value
+                })
+              }
+            />
+
+            <input
+              placeholder="Phone"
+              required
+              value={createForm.phone}
+              onChange={(e) =>
+                setCreateForm({
+                  ...createForm,
+                  phone: e.target.value
+                })
+              }
+            />
+
             <input
               type="email"
               placeholder="Email"
               required
               value={createForm.email}
-              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+              onChange={(e) =>
+                setCreateForm({
+                  ...createForm,
+                  email: e.target.value
+                })
+              }
             />
-            <input placeholder="Vehicle (e.g. Motorbike)" value={createForm.vehicle_type}
-              onChange={(e) => setCreateForm({ ...createForm, vehicle_type: e.target.value })} />
+
+            <input
+              placeholder="Vehicle (e.g. Motorbike)"
+              value={createForm.vehicle_type}
+              onChange={(e) =>
+                setCreateForm({
+                  ...createForm,
+                  vehicle_type: e.target.value
+                })
+              }
+            />
           </div>
-          <p style={{ fontSize: '0.8rem', color: '#8c827a', marginTop: 6 }}>
-            An email will be sent to this address with a link for the deliveryman to set their own username and password.
+
+          <p
+            style={{
+              fontSize: '0.8rem',
+              color: '#8c827a',
+              marginTop: 6
+            }}
+          >
+            An email will be sent to this address with
+            a link for the deliveryman to set their own
+            username and password.
           </p>
+
           <div className="admin-form-actions">
-            <button type="submit" className="btn-save">Add Deliveryman</button>
+            <button
+              type="submit"
+              className="btn-save"
+            >
+              Add Deliveryman
+            </button>
           </div>
         </form>
       )}
@@ -828,56 +1622,180 @@ function DeliverymenTab() {
             <th>Actions</th>
           </tr>
         </thead>
+
         <tbody>
           {riders.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No deliverymen yet.</td></tr>
+            <tr>
+              <td
+                colSpan={6}
+                className="admin-empty-row"
+              >
+                No deliverymen yet.
+              </td>
+            </tr>
           ) : (
             riders.map((rider) =>
               editingId === rider.deliveryman_id ? (
                 <tr key={rider.deliveryman_id}>
-                  <td colSpan={6} className="edit-row-cell">
-                    <form onSubmit={(e) => handleEditSubmit(e, rider.deliveryman_id)}>
-                      <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                        <input placeholder="Full Name" required value={editForm.name}
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-                        <input placeholder="Phone" required value={editForm.phone}
-                          onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
-                        <input placeholder="Vehicle" value={editForm.vehicle_type}
-                          onChange={(e) => setEditForm({ ...editForm, vehicle_type: e.target.value })} />
+                  <td
+                    colSpan={6}
+                    className="edit-row-cell"
+                  >
+                    <form
+                      onSubmit={(e) =>
+                        handleEditSubmit(
+                          e,
+                          rider.deliveryman_id
+                        )
+                      }
+                    >
+                      <div
+                        className="admin-form-grid"
+                        style={{
+                          gridTemplateColumns:
+                            'repeat(4, 1fr)'
+                        }}
+                      >
+                        <input
+                          placeholder="Full Name"
+                          required
+                          value={editForm.name}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              name: e.target.value
+                            })
+                          }
+                        />
+
+                        <input
+                          placeholder="Phone"
+                          required
+                          value={editForm.phone}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              phone: e.target.value
+                            })
+                          }
+                        />
+
+                        <input
+                          placeholder="Vehicle"
+                          value={
+                            editForm.vehicle_type
+                          }
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              vehicle_type:
+                                e.target.value
+                            })
+                          }
+                        />
+
                         <select
-                          value={editForm.is_active ? 'active' : 'inactive'}
-                          onChange={(e) => setEditForm({ ...editForm, is_active: e.target.value === 'active' })}
+                          value={
+                            editForm.is_active
+                              ? 'active'
+                              : 'inactive'
+                          }
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              is_active:
+                                e.target.value ===
+                                'active'
+                            })
+                          }
                         >
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
+                          <option value="active">
+                            Active
+                          </option>
+
+                          <option value="inactive">
+                            Inactive
+                          </option>
                         </select>
                       </div>
+
                       <div className="admin-form-actions">
-                        <button type="submit" className="btn-save">Save Changes</button>
-                        <button type="button" className="btn-cancel" onClick={() => setEditingId(null)}>Cancel</button>
+                        <button
+                          type="submit"
+                          className="btn-save"
+                        >
+                          Save Changes
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-cancel"
+                          onClick={() =>
+                            setEditingId(null)
+                          }
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </form>
                   </td>
                 </tr>
               ) : (
                 <tr key={rider.deliveryman_id}>
-                  <td>{rider.deliveryman_id}</td>
-                  <td className="admin-cell-title">{rider.name}</td>
+                  <td>
+                    {rider.deliveryman_id}
+                  </td>
+
+                  <td className="admin-cell-title">
+                    {rider.name}
+                  </td>
+
                   <td>{rider.phone}</td>
-                  <td>{rider.vehicle_type || '—'}</td>
+
+                  <td>
+                    {rider.vehicle_type || '—'}
+                  </td>
+
                   <td>
                     {rider.invite_pending ? (
-                      <span className="admin-stock-pill low">Pending Setup</span>
+                      <span className="admin-stock-pill low">
+                        Pending Setup
+                      </span>
                     ) : (
-                      <span className={`admin-stock-pill ${rider.is_active ? 'ok' : 'out'}`}>
-                        {rider.is_active ? 'Active' : 'Inactive'}
+                      <span
+                        className={`admin-stock-pill ${
+                          rider.is_active
+                            ? 'ok'
+                            : 'out'
+                        }`}
+                      >
+                        {rider.is_active
+                          ? 'Active'
+                          : 'Inactive'}
                       </span>
                     )}
                   </td>
+
                   <td>
                     <div className="admin-actions-cell">
-                      <button className="admin-icon-btn" onClick={() => startEdit(rider)}>Edit</button>
-                      <button className="admin-icon-btn danger" onClick={() => handleDelete(rider.deliveryman_id, rider.name)}>
+                      <button
+                        className="admin-icon-btn"
+                        onClick={() =>
+                          startEdit(rider)
+                        }
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        className="admin-icon-btn danger"
+                        onClick={() =>
+                          handleDelete(
+                            rider.deliveryman_id,
+                            rider.name
+                          )
+                        }
+                      >
                         Remove
                       </button>
                     </div>
@@ -892,100 +1810,228 @@ function DeliverymenTab() {
   );
 }
 
+
 /* ==========================================================================
-   USERS TAB — read-only
+   USERS TAB — Create Admin: Name + Email only
    ========================================================================== */
+
 function UsersTab() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState({ username: '', email: '', password: '' });
+  const [showCreateForm, setShowCreateForm] =
+    useState(false);
+
+  // CHANGED:
+  // username + password removed
+  // name added
+  const [createForm, setCreateForm] =
+    useState({
+      name: '',
+      email: ''
+    });
 
   useEffect(() => {
     let isMounted = true;
+
     const loadUsers = async () => {
       try {
         setLoading(true);
+
         const data = await api.getAdminUsers();
-        if (isMounted) setUsers(Array.isArray(data) ? data : []);
+
+        if (isMounted) {
+          setUsers(
+            Array.isArray(data) ? data : []
+          );
+        }
       } catch (err) {
-        console.error('Failed to load users:', err);
-        if (isMounted) setError(err.message || 'Failed to load users.');
+        console.error(
+          'Failed to load users:',
+          err
+        );
+
+        if (isMounted) {
+          setError(
+            err.message ||
+            'Failed to load users.'
+          );
+        }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
+
     loadUsers();
-    return () => { isMounted = false; };
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  if (loading) return <p className="admin-state-msg">Loading users...</p>;
-  if (error) return <p className="admin-state-msg error">{error}</p>;
+  if (loading) {
+    return (
+      <p className="admin-state-msg">
+        Loading users...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="admin-state-msg error">
+        {error}
+      </p>
+    );
+  }
 
   const handleCreateAdmin = async (event) => {
     event.preventDefault();
+
     try {
+      // Sends only:
+      // {
+      //   name: "...",
+      //   email: "..."
+      // }
       await api.createAdmin(createForm);
-      setCreateForm({ username: '', email: '', password: '' });
+
+      setCreateForm({
+        name: '',
+        email: ''
+      });
+
       setShowCreateForm(false);
+
       window.location.reload();
     } catch (err) {
-      alert(err.message || 'Failed to create admin');
+      alert(
+        err.message ||
+        'Failed to create admin'
+      );
     }
   };
 
   return (
     <div>
       <div className="admin-panel-toolbar">
-        <h3>Registered Users ({users.length})</h3>
+        <h3>
+          Registered Users ({users.length})
+        </h3>
+
         <button
-          className={`admin-primary-btn ${showCreateForm ? 'cancel' : ''}`}
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          className={`admin-primary-btn ${
+            showCreateForm ? 'cancel' : ''
+          }`}
+          onClick={() =>
+            setShowCreateForm(!showCreateForm)
+          }
         >
-          {showCreateForm ? 'Cancel' : '+ Create Admin'}
+          {showCreateForm
+            ? 'Cancel'
+            : '+ Create Admin'}
         </button>
       </div>
+
       {showCreateForm && (
-        <form onSubmit={handleCreateAdmin} className="admin-form-card">
+        <form
+          onSubmit={handleCreateAdmin}
+          className="admin-form-card"
+        >
           <div className="admin-form-grid">
-            <input placeholder="Username" required value={createForm.username}
-              onChange={(event) => setCreateForm({ ...createForm, username: event.target.value })} />
-            <input type="email" pattern="[^\s@]+@[^\s@]+\.[A-Za-z]{2,}" title="Enter an email address with a valid domain" placeholder="Email" required value={createForm.email}
-              onChange={(event) => setCreateForm({ ...createForm, email: event.target.value })} />
-            <input type="password" placeholder="Password (min. 6 characters)" minLength={6} required value={createForm.password}
-              onChange={(event) => setCreateForm({ ...createForm, password: event.target.value })} />
+
+            {/* NAME — instead of username */}
+            <input
+              placeholder="Full Name"
+              required
+              value={createForm.name}
+              onChange={(event) =>
+                setCreateForm({
+                  ...createForm,
+                  name: event.target.value
+                })
+              }
+            />
+
+            {/* EMAIL */}
+            <input
+              type="email"
+              pattern="[^\s@]+@[^\s@]+\.[A-Za-z]{2,}"
+              title="Enter an email address with a valid domain"
+              placeholder="Email"
+              required
+              value={createForm.email}
+              onChange={(event) =>
+                setCreateForm({
+                  ...createForm,
+                  email: event.target.value
+                })
+              }
+            />
+
           </div>
+
           <div className="admin-form-actions">
-            <button type="submit" className="btn-save">Create Admin</button>
+            <button
+              type="submit"
+              className="btn-save"
+            >
+              Create Admin
+            </button>
           </div>
         </form>
       )}
+
       <table className="admin-table">
         <thead>
           <tr>
             <th>ID</th>
-            <th>Username</th>
+            <th>Name</th>
             <th>Email</th>
             <th>Role</th>
             <th>City</th>
             <th>Joined</th>
           </tr>
         </thead>
+
         <tbody>
           {users.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No users found.</td></tr>
+            <tr>
+              <td
+                colSpan={6}
+                className="admin-empty-row"
+              >
+                No users found.
+              </td>
+            </tr>
           ) : (
             users.map((u) => (
               <tr key={u.user_id}>
                 <td>{u.user_id}</td>
-                <td className="admin-cell-title">{u.username}</td>
-                <td>{u.email}</td>
-                <td>
-                  <span className={`admin-role-badge ${u.role}`}>{u.role?.toUpperCase()}</span>
+
+                <td className="admin-cell-title">
+                  {u.name || u.username}
                 </td>
+
+                <td>{u.email}</td>
+
+                <td>
+                  <span
+                    className={`admin-role-badge ${u.role}`}
+                  >
+                    {u.role?.toUpperCase()}
+                  </span>
+                </td>
+
                 <td>{u.city || '—'}</td>
-                <td>{new Date(u.created_at).toLocaleDateString()}</td>
+
+                <td>
+                  {new Date(
+                    u.created_at
+                  ).toLocaleDateString()}
+                </td>
               </tr>
             ))
           )}

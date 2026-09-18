@@ -441,3 +441,136 @@ CREATE INDEX IF NOT EXISTS idx_notifications_reference
   ALTER TABLE notifications
   ADD COLUMN entity_type VARCHAR(30),   -- 'order' | 'delivery' | 'review' etc.
   ADD COLUMN entity_id INTEGER;         -- order_id / delivery_id / etc.
+
+
+
+  -- ============================================================================
+-- 002_notifications_and_delivery_fixes.sql
+-- Run against the existing "bookstore" database:
+--   psql -U your_db_user -d bookstore -f migrations/002_notifications_and_delivery_fixes.sql
+-- ============================================================================
+
+BEGIN;
+
+-- 1. deliverymen needs a link to their own login. admin.js and deliveryman.js
+--    both already assume this column exists (INSERT ... user_id, WHERE user_id = $1)
+--    but it was never added to schema_updated.pgsql — every deliveryman route
+--    was broken because of this alone.
+ALTER TABLE deliverymen ADD COLUMN IF NOT EXISTS user_id INTEGER UNIQUE REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- The email the admin invites a rider with, before that rider has a users row.
+ALTER TABLE deliverymen ADD COLUMN IF NOT EXISTS invite_email VARCHAR(150);
+
+-- 2. deliveries.status CHECK never allowed 'pending_acceptance' or 'declined',
+--    but admin.js's /orders/:id/ship and deliveryman.js's /decline both write
+--    those values. Every "assign delivery" call was failing with a CHECK
+--    violation (23514).
+ALTER TABLE deliveries DROP CONSTRAINT IF EXISTS delivery_status_check;
+ALTER TABLE deliveries ADD CONSTRAINT delivery_status_check
+  CHECK (status IN ('pending_acceptance','preparing','picked_up','in_transit',
+                     'out_for_delivery','delivered','failed','declined'));
+
+-- 3. users.role needs 'deliveryman' as a legal value — schema_bookstore.pgsql had
+--    it but with a syntax typo (missing quote), schema_updated.pgsql dropped the
+--    role from the CHECK entirely.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('customer','admin','deliveryman'));
+
+-- 4. Give notifications enough context for the frontend to deep-link straight to
+--    the order/delivery a notification is about ("prompt to that section").
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(30);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read);
+
+-- 5. Invite-based registration. Used for deliverymen now; the "role" column
+--    means the same table/flow can cover admin invites too (see note at the
+--    bottom of this migration and admin.js).
+CREATE TABLE IF NOT EXISTS registration_invites (
+    invite_id       SERIAL PRIMARY KEY,
+    token           VARCHAR(128) NOT NULL UNIQUE,
+    email           VARCHAR(150) NOT NULL,
+    role            VARCHAR(20) NOT NULL CHECK (role IN ('deliveryman','admin')),
+    deliveryman_id  INTEGER REFERENCES deliverymen(deliveryman_id) ON DELETE CASCADE,
+    expires_at      TIMESTAMP NOT NULL,
+    used_at         TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_registration_invites_token ON registration_invites(token);
+
+COMMIT;
+
+-- NOTE: schema_updated.pgsql (the fresh-install script) should be updated to
+-- include all of the above directly, so a brand-new database doesn't need this
+-- migration replayed on top of it.
+
+
+-- ============================================================================
+-- 002_notifications_and_delivery_fixes.sql
+-- Run against the existing "bookstore" database:
+--   psql -U your_db_user -d bookstore -f migrations/002_notifications_and_delivery_fixes.sql
+-- ============================================================================
+
+BEGIN;
+
+-- 1. deliverymen needs a link to their own login. admin.js and deliveryman.js
+--    both already assume this column exists (INSERT ... user_id, WHERE user_id = $1)
+--    but it was never added to schema_updated.pgsql — every deliveryman route
+--    was broken because of this alone.
+ALTER TABLE deliverymen ADD COLUMN IF NOT EXISTS user_id INTEGER UNIQUE REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- The email the admin invites a rider with, before that rider has a users row.
+ALTER TABLE deliverymen ADD COLUMN IF NOT EXISTS invite_email VARCHAR(150);
+
+-- 2. deliveries.status CHECK never allowed 'pending_acceptance' or 'declined',
+--    but admin.js's /orders/:id/ship and deliveryman.js's /decline both write
+--    those values. Every "assign delivery" call was failing with a CHECK
+--    violation (23514).
+ALTER TABLE deliveries DROP CONSTRAINT IF EXISTS delivery_status_check;
+ALTER TABLE deliveries ADD CONSTRAINT delivery_status_check
+  CHECK (status IN ('pending_acceptance','preparing','picked_up','in_transit',
+                     'out_for_delivery','delivered','failed','declined'));
+
+-- 3. users.role needs 'deliveryman' as a legal value — schema_bookstore.pgsql had
+--    it but with a syntax typo (missing quote), schema_updated.pgsql dropped the
+--    role from the CHECK entirely.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('customer','admin','deliveryman'));
+
+-- 4. Give notifications enough context for the frontend to deep-link straight to
+--    the order/delivery a notification is about ("prompt to that section").
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(30);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read);
+
+-- 5. Invite-based registration. Used for deliverymen now; the "role" column
+--    means the same table/flow can cover admin invites too (see note at the
+--    bottom of this migration and admin.js).
+CREATE TABLE IF NOT EXISTS registration_invites (
+    invite_id       SERIAL PRIMARY KEY,
+    token           VARCHAR(128) NOT NULL UNIQUE,
+    email           VARCHAR(150) NOT NULL,
+    role            VARCHAR(20) NOT NULL CHECK (role IN ('deliveryman','admin')),
+    deliveryman_id  INTEGER REFERENCES deliverymen(deliveryman_id) ON DELETE CASCADE,
+    expires_at      TIMESTAMP NOT NULL,
+    used_at         TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_registration_invites_token ON registration_invites(token);
+
+COMMIT;
+
+-- NOTE: schema_updated.pgsql (the fresh-install script) should be updated to
+-- include all of the above directly, so a brand-new database doesn't need this
+-- migration replayed on top of it.
+
+-- ----------------------------------------------------------------------------
+-- Appended later: registration_invites needs somewhere to hold the invited
+-- person's name for admin invites (deliverymen already have their name on
+-- the deliverymen row itself, but admins have no equivalent table until
+-- they accept and get a users row).
+-- ----------------------------------------------------------------------------
+ALTER TABLE registration_invites ADD COLUMN IF NOT EXISTS invited_name VARCHAR(150);
+
+
+ALTER TABLE users
+ADD COLUMN name VARCHAR(100);

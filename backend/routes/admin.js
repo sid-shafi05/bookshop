@@ -146,10 +146,10 @@ router.delete('/books/:id', async (req, res) => {
 // ====================================================================
 
 router.post('/admins', async (req, res) => {
-  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  if (!username || !email) {
-    return res.status(400).json({ error: 'Username and email are required' });
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required' });
   }
   if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Please provide a valid email address' });
@@ -167,9 +167,9 @@ router.post('/admins', async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     await client.query(
-      `INSERT INTO registration_invites (token, email, role, expires_at)
-       VALUES ($1, $2, 'admin', $3)`,
-      [token, email, expiresAt]
+      `INSERT INTO registration_invites (token, email, role, invited_name, expires_at)
+       VALUES ($1, $2, 'admin', $3, $4)`,
+      [token, email, name, expiresAt]
     );
     await client.query('COMMIT');
 
@@ -177,7 +177,7 @@ router.post('/admins', async (req, res) => {
     sendEmail({
       to: email,
       subject: 'You have been invited as a BookHarbour admin',
-      text: `Hi ${username}, you've been invited to be an admin on BookHarbour. Finish setting up your account (choose your own password) here: ${link}\nThis link expires in 7 days.`
+      text: `Hi ${name}, you've been invited to be an admin on BookHarbour. Finish setting up your account (choose your own username and password) here: ${link}\nThis link expires in 7 days.`
     }).catch(err => console.error('Admin invite email failed:', err.message));
 
     res.status(201).json({ message: `Invite sent to ${email}` });
