@@ -9,6 +9,7 @@ import AuthModal from './components/AuthModal';
 import AdminDashboard from './components/AdminDashboard';
 import DeliverymanDashboard from './components/DeliverymanDashboard';
 import DeliverymanSetup from './components/DeliverymanSetup';
+import AdminSetup from './components/AdminSetup';   
 import CheckoutModal from './components/CheckoutModal';
 import OrdersView from './components/OrdersView';
 import BookDetails from './components/BookDetails';
@@ -180,15 +181,25 @@ export default function App() {
     }
   };
 
-  const handleSignOut = async () => {
-    try { await api.logout().catch(() => {}); }
-    finally {
-      setUser(null);
-      sessionStorage.removeItem(AUTH_USER_KEY);
-      navigate('/');
-      showToast('Signed out successfully');
-    }
-  };
+const handleSignOut = async () => {
+  try {
+    await api.logout();
+  } catch (err) {
+    console.error('Logout API error:', err);
+  } finally {
+    // 1. Clear all persistent client data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.clear();
+    sessionStorage.removeItem(AUTH_USER_KEY);
+    sessionStorage.clear();
+
+    // 2. Clear state and redirect
+    setUser(null);
+    navigate('/');
+    showToast('Signed out successfully');
+  }
+};
 
   const handleAddToCart = async (bookId) => {
     if (!user || user.role !== 'customer') { setIsLoginMode(true); setShowAuthModal(true); return; }
@@ -201,8 +212,17 @@ export default function App() {
   // Deliveryman setup uses a plain query-string link from an email, so it's
   // handled before the auth check / router below, exactly like before.
   if (location.pathname === '/deliveryman/setup') return <DeliverymanSetup />;
+    // Deliveryman setup uses a plain query-string link from an email, so it's
+  if (location.pathname === '/register/admin') return <AdminSetup />;  
   if (!authResolved) return <div className="auth-gate-loading">Checking your session...</div>;
 
+const handleLogout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  sessionStorage.clear();
+  setUser(null);
+  setShowAdmin(false);
+};
   return (
     <div className="bn-layout">
       {toastMessage && <div className="toast-bar">{toastMessage}</div>}
@@ -245,11 +265,16 @@ export default function App() {
       )}
 
       <Routes>
-        <Route
-          path="/admin"
-          element={user?.role === 'admin' ? <AdminDashboard user={user} onClose={handleSignOut} /> : <Navigate to="/" replace />}
-        />
-
+<Route
+  path="/admin"
+  element={
+    user?.role === 'admin' ? (
+      <AdminDashboard user={user} onClose={handleSignOut} onLogout={handleSignOut} />
+    ) : (
+      <Navigate to="/" replace />
+    )
+  }
+/>
         <Route
           path="/delivery"
           element={user?.role === 'deliveryman' ? <DeliverymanDashboard user={user} onClose={handleSignOut} /> : <Navigate to="/" replace />}

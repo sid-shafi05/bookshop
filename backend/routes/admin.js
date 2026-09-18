@@ -641,4 +641,74 @@ router.delete('/deliverymen/:id', async (req, res) => {
   }
 });
 
+
+// DELETE /admin/users/:id -> Admin deletes a non-admin user account
+router.delete('/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch target user
+    const userRes = await client.query(
+      'SELECT user_id, email, role FROM users WHERE user_id = $1',
+      [id]
+    );
+
+    if (userRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userRes.rows[0];
+
+    // 2. Prevent removing admin accounts
+    if (targetUser.role === 'admin') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+    }
+
+    // 3. Prevent deletion if user has existing order history (preserves order records)
+    const orderCheck = await client.query(
+      'SELECT 1 FROM orders WHERE customer_id = $1 LIMIT 1',
+      [id]
+    );
+    if (orderCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Cannot delete user with existing purchase or order history.'
+      });
+    }
+
+    // 4. Clean up dependent user records before deleting account
+    await client.query('DELETE FROM notifications WHERE user_id = $1', [id]);
+    await client.query('DELETE FROM carts WHERE customer_id = $1', [id]);
+    await client.query('DELETE FROM wishlists WHERE customer_id = $1', [id]);
+    await client.query('DELETE FROM registration_invites WHERE email = $1', [targetUser.email]);
+
+    // Decouple from deliverymen table if this user account belongs to a rider
+    await client.query('UPDATE deliverymen SET user_id = NULL WHERE user_id = $1', [id]);
+
+    // 5. Delete user from users table
+    await client.query('DELETE FROM users WHERE user_id = $1', [id]);
+
+    await client.query('COMMIT');
+    res.json({ message: `User account (${targetUser.email}) removed successfully` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+
+    // Foreign Key constraint fallback
+    if (err.code === '23503') {
+      return res.status(400).json({
+        error: 'Cannot delete user due to linked activity records in the database.'
+      });
+    }
+
+    console.error('Error deleting user:', err.message);
+    res.status(500).json({ error: 'Failed to delete user' });
+  } finally {
+    client.release();
+  }
+});
 module.exports = router;

@@ -80,16 +80,18 @@ export const api = {
   getBook: (bookId) => request(`/books/${bookId}`),
   getGenres: () => request('/books/genres'),
 
-  // Auth
+// Auth
   signup: ({ username, email, password }) =>
     request('/auth/signup', { method: 'POST', body: JSON.stringify({ username, email, password }) }),
   login: ({ email, password }) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   getCurrentUser: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
-completeDeliverymanSetup: ({ token, username, password }) =>
-  request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
-
+  checkInvite: (token) => request(`/auth/invite/${token}`),
+  completeDeliverymanSetup: ({ token, username, password }) =>
+    request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
+  completeAdminSetup: ({ token, username, password }) =>
+    request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
   // Cart
   getCart: (customerId) => request(`/cart/${customerId}`),
   addToCart: ({ customer_id, book_id, quantity = 1 }) =>
@@ -129,4 +131,8 @@ completeDeliverymanSetup: ({ token, username, password }) =>
   getNotifications: () => request('/notifications'),
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'PUT' }),
   markAllNotificationsRead: () => request('/notifications/read-all', { method: 'PUT' }),
+
+
+  deleteUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
+
 };
