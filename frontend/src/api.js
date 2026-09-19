@@ -92,6 +92,7 @@ export const api = {
     request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
   completeAdminSetup: ({ token, username, password }) =>
     request(`/auth/invite/${token}/accept`, { method: 'POST', body: JSON.stringify({ username, password }) }),
+    updateMyProfile: (fields) => request('/auth/me', { method: 'PUT', body: JSON.stringify(fields) }),
   // Cart
   getCart: (customerId) => request(`/cart/${customerId}`),
   addToCart: ({ customer_id, book_id, quantity = 1 }) =>
@@ -134,5 +135,12 @@ export const api = {
 
 
   deleteUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
+
+
+  //Coupons
+  getAdminCoupons: () => request('/admin/coupons'),
+  createCoupon: (data) => request('/admin/coupons', { method: 'POST', body: JSON.stringify(data) }),
+  updateCoupon: (id, data) => request(`/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCoupon: (id) => request(`/admin/coupons/${id}`, { method: 'DELETE' }),
 
 };

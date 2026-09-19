@@ -14,6 +14,7 @@ export default function Navbar({
   onOpenOrders,
   onSignOut,
   onHome,
+  onOpenProfile, 
   onBrowseBooks,
   searchQuery,
   setSearchQuery
@@ -142,6 +143,9 @@ export default function Navbar({
                     My Orders
                   </button>
 
+<button className="menu-item" onClick={onOpenProfile}>
+  My Profile
+</button>
                   <button
                     className="menu-item"
                     onClick={onOpenWishlist}

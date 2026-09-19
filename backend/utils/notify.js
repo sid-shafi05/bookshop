@@ -61,4 +61,12 @@ async function notifyAdmins({ text, topic = 'general', referenceType = null, ref
   );
 }
 
-module.exports = { notify, notifyAdmins };
+async function notifyCustomers({ text, topic = 'general', referenceType = null, referenceId = null, client = null }) {
+  const db = client || pool;
+  const { rows: customers } = await db.query(`SELECT user_id FROM users WHERE role = 'customer'`);
+  return Promise.all(
+    customers.map(c => notify({ userId: c.user_id, text, topic, referenceType, referenceId, client }))
+  );
+}
+
+module.exports = { notify, notifyAdmins, notifyCustomers };   // add notifyCustomers here

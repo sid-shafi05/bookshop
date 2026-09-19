@@ -104,17 +104,37 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /auth/me (unchanged)
+// GET /auth/me
+// Now returns name + full address fields, not just id/username/email/role,
+// so the profile-edit form (and "use my saved address" at checkout) can be
+// prefilled without a second round trip. Works identically for customer,
+// admin, or deliveryman — it's just their users row either way.
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT user_id, username, email, role FROM users WHERE user_id = $1',
+      `SELECT user_id, username, name, email, role, phone,
+              house_no, street, city, postal_code, country
+       FROM users WHERE user_id = $1`,
       [req.userId]
     );
     const user = result.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ user: { id: user.user_id, username: user.username, email: user.email, role: user.role } });
+    res.json({
+      user: {
+        id: user.user_id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        house_no: user.house_no,
+        street: user.street,
+        city: user.city,
+        postal_code: user.postal_code,
+        country: user.country,
+      }
+    });
   } catch (err) {
     console.error('Error restoring authenticated user:', err);
     res.status(500).json({ error: 'Failed to restore session' });
@@ -123,9 +143,14 @@ router.get('/me', verifyToken, async (req, res) => {
 
 // PUT /auth/me -> self-service profile edit (works for customer, admin, or
 // deliveryman alike — it's just their own users row).
-// Body: any subset of { username, email, phone, house_no, street, city, postal_code, country }
+// Body: any subset of { username, name, email, phone, house_no, street, city, postal_code, country }
+//
+// Added: `name` field, an application-level username-uniqueness check
+// (the users table has no DB-level UNIQUE constraint on username, unlike
+// email), and — for deliverymen — keeping the deliverymen roster row's
+// name/phone in sync so the admin's rider list doesn't go stale.
 router.put('/me', verifyToken, async (req, res) => {
-  const fields = ['username', 'email', 'phone', 'house_no', 'street', 'city', 'postal_code', 'country'];
+  const fields = ['username', 'name', 'email', 'phone', 'house_no', 'street', 'city', 'postal_code', 'country'];
   const updates = {};
   for (const f of fields) {
     if (req.body[f] !== undefined) updates[f] = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
@@ -144,24 +169,76 @@ router.put('/me', verifyToken, async (req, res) => {
     }
   }
 
-  const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 1}`);
-  const values = Object.values(updates);
-  values.push(req.userId);
-
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // Username has no DB-level UNIQUE constraint, so check explicitly to
+    // give a clean 409 instead of silently allowing duplicates.
+    if (updates.username !== undefined) {
+      const dupe = await client.query(
+        'SELECT 1 FROM users WHERE username = $1 AND user_id != $2',
+        [updates.username, req.userId]
+      );
+      if (dupe.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'That username is already taken' });
+      }
+    }
+
+    const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 1}`);
+    const values = Object.values(updates);
+    values.push(req.userId);
+
+    const result = await client.query(
       `UPDATE users SET ${setClauses.join(', ')} WHERE user_id = $${values.length}
-       RETURNING user_id, username, email, role, phone, house_no, street, city, postal_code, country`,
+       RETURNING user_id, username, name, email, role, phone, house_no, street, city, postal_code, country`,
       values
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json({ message: 'Profile updated', user: result.rows[0] });
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const updated = result.rows[0];
+
+    // Keep the deliverymen roster row's display name/phone in sync, so the
+    // admin's "Deliverymen" list reflects what the rider set for themself.
+    if (updated.role === 'deliveryman' && (updates.name !== undefined || updates.phone !== undefined)) {
+      await client.query(
+        `UPDATE deliverymen SET
+           name = COALESCE($1, name),
+           phone = COALESCE($2, phone)
+         WHERE user_id = $3`,
+        [updates.name !== undefined ? updates.name : null, updates.phone !== undefined ? updates.phone : null, req.userId]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      message: 'Profile updated',
+      user: {
+        id: updated.user_id,
+        username: updated.username,
+        name: updated.name,
+        email: updated.email,
+        role: updated.role,
+        phone: updated.phone,
+        house_no: updated.house_no,
+        street: updated.street,
+        city: updated.city,
+        postal_code: updated.postal_code,
+        country: updated.country,
+      }
+    });
   } catch (err) {
+    await client.query('ROLLBACK');
     if (err.code === '23505') {
       return res.status(409).json({ error: 'That email is already in use by another account' });
     }
     console.error('Error updating profile:', err.message);
     res.status(500).json({ error: 'Failed to update profile' });
+  } finally {
+    client.release();
   }
 });
 

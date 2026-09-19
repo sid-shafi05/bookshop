@@ -10,6 +10,7 @@ import AdminDashboard from './components/AdminDashboard';
 import DeliverymanDashboard from './components/DeliverymanDashboard';
 import DeliverymanSetup from './components/DeliverymanSetup';
 import AdminSetup from './components/AdminSetup';   
+import ProfileSettings from './components/ProfileSettings'; 
 import CheckoutModal from './components/CheckoutModal';
 import OrdersView from './components/OrdersView';
 import BookDetails from './components/BookDetails';
@@ -87,6 +88,7 @@ export default function App() {
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [ordersInitialId, setOrdersInitialId] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);  
 
   useEffect(() => {
     let isMounted = true;
@@ -180,7 +182,11 @@ export default function App() {
       alert(err.message || 'Authentication failed');
     }
   };
-
+const handleProfileUpdated = (updatedUser) => {
+  setUser(updatedUser);
+  sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
+  showToast('Profile updated');
+};
 const handleSignOut = async () => {
   try {
     await api.logout();
@@ -251,6 +257,7 @@ const handleLogout = () => {
             setShowAuthModal(true);
           }}
           onOpenOrders={() => user && navigate('/orders')}
+          onOpenProfile={() => setShowProfile(true)} 
           onSignOut={handleSignOut}
           onHome={() => {
             setSelectedCategory('All');
@@ -269,7 +276,7 @@ const handleLogout = () => {
   path="/admin"
   element={
     user?.role === 'admin' ? (
-      <AdminDashboard user={user} onClose={handleSignOut} onLogout={handleSignOut} />
+      <AdminDashboard user={user} onClose={handleSignOut} onLogout={handleSignOut} onOpenProfile={() => setShowProfile(true)}/>
     ) : (
       <Navigate to="/" replace />
     )
@@ -277,7 +284,7 @@ const handleLogout = () => {
 />
         <Route
           path="/delivery"
-          element={user?.role === 'deliveryman' ? <DeliverymanDashboard user={user} onClose={handleSignOut} /> : <Navigate to="/" replace />}
+          element={user?.role === 'deliveryman' ? <DeliverymanDashboard user={user} onClose={handleSignOut} onOpenProfile={() => setShowProfile(true)}/> : <Navigate to="/" replace />}
         />
 
         <Route
@@ -384,6 +391,7 @@ const handleLogout = () => {
             onClose={() => setShowCheckout(false)}
             cart={cart}
             customerId={user.id}
+             user={user}  
             onOrderPaid={(checkoutResponse) => {
               const order = checkoutResponse.order || checkoutResponse;
               setShowCheckout(false);
@@ -445,7 +453,12 @@ const handleLogout = () => {
           />
         </>
       )}
-
+<ProfileSettings
+  isOpen={showProfile}
+  onClose={() => setShowProfile(false)}
+  user={user}
+  onUpdated={handleProfileUpdated}
+/>
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}

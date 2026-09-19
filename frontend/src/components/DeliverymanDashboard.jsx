@@ -16,7 +16,7 @@ function mapsUrl(address) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
-export default function DeliverymanDashboard({ onClose, user }) {
+export default function DeliverymanDashboard({ onClose, user, onOpenProfile }) {
   const [activeTab, setActiveTab] = useState('requests'); // requests | active | history
 
   return (
@@ -30,6 +30,7 @@ export default function DeliverymanDashboard({ onClose, user }) {
             <span>{user?.email}</span>
             <small>DELIVERYMAN</small>
           </div>
+           <button className="admin-back-btn" onClick={onOpenProfile}>My Profile</button>
           <button className="admin-back-btn" onClick={onClose}>Sign Out</button>
         </div>
       </div>

@@ -574,3 +574,18 @@ ALTER TABLE registration_invites ADD COLUMN IF NOT EXISTS invited_name VARCHAR(1
 
 ALTER TABLE users
 ADD COLUMN name VARCHAR(100);
+
+BEGIN;
+ 
+-- usage_limit = NULL means unlimited uses. times_used is incremented
+-- atomically at checkout (see routes/orders.js) whenever the coupon is
+-- successfully applied to a paid/pending order.
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS usage_limit INTEGER;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS times_used INTEGER NOT NULL DEFAULT 0;
+ 
+ALTER TABLE coupons DROP CONSTRAINT IF EXISTS coupon_usage_limit_check;
+ALTER TABLE coupons ADD CONSTRAINT coupon_usage_limit_check
+  CHECK (usage_limit IS NULL OR usage_limit > 0);
+ 
+COMMIT;
+ 

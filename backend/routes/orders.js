@@ -81,7 +81,8 @@ router.post('/checkout', async (req, res) => {
       const couponRes = await client.query(
         `SELECT * FROM coupons
          WHERE code = $1 AND is_active = TRUE
-           AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)`,
+           AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+           FOR UPDATE `,
         [coupon_code]
       );
       coupon = couponRes.rows[0];
@@ -120,6 +121,12 @@ router.post('/checkout', async (req, res) => {
         [item.quantity, item.book_id]
       );
     }
+    if (coupon) {
+  await client.query(
+    `UPDATE coupons SET times_used = times_used + 1 WHERE coupon_id = $1`,
+    [coupon.coupon_id]
+  );
+}
 
     await client.query(
       `DELETE FROM cart_items WHERE cart_id = (SELECT cart_id FROM carts WHERE customer_id = $1)`,
