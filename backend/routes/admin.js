@@ -6,7 +6,7 @@ const pool = require('../db');
 
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
-const { notify, notifyAdmins, notifyAllCustomers } = require('../utils/notify');
+const { notify, notifyAdmins , notifyCustomers} = require('../utils/notify');
 const { sendEmail } = require('../utils/email');
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -1150,6 +1150,151 @@ router.delete('/users/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete user' });
   } finally {
     client.release();
+  }
+});
+
+// ====================================================================
+// COUPONS
+//
+// Creating a coupon notifies every existing customer (in-app + email,
+// via notifyCustomers -> notify()) so they find out about it without
+// having to check the storefront. usage_limit is optional (NULL = no
+// cap); enforcement + the times_used counter live in routes/orders.js
+// at checkout, where the coupon row is locked FOR UPDATE to avoid a
+// race between two customers redeeming the last use at once.
+// ====================================================================
+
+router.get('/coupons', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM coupons ORDER BY coupon_id DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching coupons:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.post('/coupons', async (req, res) => {
+  const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+  const discount_percent = Number(req.body.discount_percent);
+  const expiry_date = req.body.expiry_date || null;
+  const min_order_amount = req.body.min_order_amount !== undefined && req.body.min_order_amount !== ''
+    ? Number(req.body.min_order_amount) : 0;
+  const max_discount = req.body.max_discount !== undefined && req.body.max_discount !== ''
+    ? Number(req.body.max_discount) : null;
+  const usage_limit = req.body.usage_limit !== undefined && req.body.usage_limit !== ''
+    ? Number(req.body.usage_limit) : null; // null = unlimited
+  const is_active = req.body.is_active !== undefined ? Boolean(req.body.is_active) : true;
+
+  if (!code) return res.status(400).json({ error: 'Coupon code is required' });
+  if (!Number.isFinite(discount_percent) || discount_percent <= 0 || discount_percent > 100) {
+    return res.status(400).json({ error: 'Discount percent must be between 0 and 100' });
+  }
+  if (!Number.isFinite(min_order_amount) || min_order_amount < 0) {
+    return res.status(400).json({ error: 'Minimum order amount must be zero or more' });
+  }
+  if (max_discount !== null && (!Number.isFinite(max_discount) || max_discount < 0)) {
+    return res.status(400).json({ error: 'Max discount must be zero or more' });
+  }
+  if (usage_limit !== null && (!Number.isInteger(usage_limit) || usage_limit <= 0)) {
+    return res.status(400).json({ error: 'Usage limit must be a positive whole number, or left blank for unlimited' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO coupons (code, discount_percent, expiry_date, min_order_amount, max_discount, usage_limit, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [code, discount_percent, expiry_date, min_order_amount, max_discount, usage_limit, is_active]
+    );
+    const coupon = result.rows[0];
+
+    // Fire-and-forget: a slow/failed notification fan-out shouldn't hold up
+    // the admin's "coupon created" response.
+    const discountText = `${Number(coupon.discount_percent)}% off`;
+    const minOrderText = Number(coupon.min_order_amount) > 0
+      ? ` on orders over Tk ${Number(coupon.min_order_amount).toFixed(2)}` : '';
+    const expiryText = coupon.expiry_date
+      ? ` Valid until ${new Date(coupon.expiry_date).toLocaleDateString()}.` : '';
+    const limitText = coupon.usage_limit ? ` Limited to the first ${coupon.usage_limit} uses.` : '';
+
+    notifyCustomers({
+      text: `New coupon "${coupon.code}"! Get ${discountText}${minOrderText}.${expiryText}${limitText}`,
+      topic: 'general',
+    }).catch(err => console.error('Coupon notification fan-out failed:', err.message));
+
+    res.status(201).json(coupon);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A coupon with this code already exists' });
+    }
+    console.error('Error creating coupon:', err.message);
+    res.status(500).json({ error: 'Failed to create coupon' });
+  }
+});
+
+router.put('/coupons/:id', async (req, res) => {
+  const { id } = req.params;
+  const fields = ['discount_percent', 'expiry_date', 'min_order_amount', 'max_discount', 'usage_limit', 'is_active'];
+  const updates = {};
+  for (const f of fields) {
+    if (req.body[f] !== undefined) updates[f] = req.body[f] === '' ? null : req.body[f];
+  }
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  if (updates.discount_percent !== undefined) {
+    const dp = Number(updates.discount_percent);
+    if (!Number.isFinite(dp) || dp <= 0 || dp > 100) {
+      return res.status(400).json({ error: 'Discount percent must be between 0 and 100' });
+    }
+  }
+  if (updates.usage_limit !== undefined && updates.usage_limit !== null) {
+    const ul = Number(updates.usage_limit);
+    if (!Number.isInteger(ul) || ul <= 0) {
+      return res.status(400).json({ error: 'Usage limit must be a positive whole number, or blank for unlimited' });
+    }
+  }
+
+  const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 1}`);
+  const values = Object.values(updates);
+  values.push(id);
+
+  try {
+    const result = await pool.query(
+      `UPDATE coupons SET ${setClauses.join(', ')} WHERE coupon_id = $${values.length} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Coupon not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating coupon:', err.message);
+    res.status(500).json({ error: 'Failed to update coupon' });
+  }
+});
+
+// Coupons already applied to past orders stay valid on those orders
+// (orders.coupon_id -> ON DELETE SET NULL), so a hard delete is actually
+// safe — but we deactivate instead when there's order history, same
+// pattern as deliverymen, so the admin doesn't lose the usage record.
+router.delete('/coupons/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const inUse = await pool.query('SELECT 1 FROM orders WHERE coupon_id = $1 LIMIT 1', [id]);
+    if (inUse.rows.length > 0) {
+      const result = await pool.query(
+        'UPDATE coupons SET is_active = FALSE WHERE coupon_id = $1 RETURNING *',
+        [id]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ error: 'Coupon not found' });
+      return res.json({ message: 'Coupon has order history and was deactivated instead of deleted', coupon: result.rows[0] });
+    }
+
+    const result = await pool.query('DELETE FROM coupons WHERE coupon_id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Coupon not found' });
+    res.json({ message: 'Coupon deleted' });
+  } catch (err) {
+    console.error('Error deleting coupon:', err.message);
+    res.status(500).json({ error: 'Failed to delete coupon' });
   }
 });
 module.exports = router;

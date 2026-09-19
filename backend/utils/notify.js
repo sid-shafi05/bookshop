@@ -61,7 +61,7 @@ async function notifyAdmins({ text, topic = 'general', referenceType = null, ref
   );
 }
 
-async function notifyAllCustomers({ text, topic = 'general', referenceType = null, referenceId = null, client = null }) {
+async function notifyCustomers({ text, topic = 'general', referenceType = null, referenceId = null, client = null }) {
   const db = client || pool;
   const { rows: customers } = await db.query(`SELECT user_id FROM users WHERE role = 'customer'`);
   return Promise.all(
@@ -69,4 +69,4 @@ async function notifyAllCustomers({ text, topic = 'general', referenceType = nul
   );
 }
 
-module.exports = { notify, notifyAdmins, notifyAllCustomers };
+module.exports = { notify, notifyAdmins, notifyCustomers };   // add notifyCustomers here
