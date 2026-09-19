@@ -13,53 +13,279 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const emailRegex = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 
+async function findOrCreatePublisher(client, name) {
+  const publisherName = typeof name === 'string' ? name.trim() : '';
+  if (!publisherName) return null;
+
+  const db = client || pool;
+  const existing = await db.query(
+    'SELECT publisher_id FROM publishers WHERE LOWER(name) = LOWER($1)',
+    [publisherName]
+  );
+
+  if (existing.rows[0]) {
+    return existing.rows[0].publisher_id;
+  }
+
+  const result = await db.query(
+    'INSERT INTO publishers (name) VALUES ($1) RETURNING publisher_id',
+    [publisherName]
+  );
+
+  return result.rows[0]?.publisher_id || null;
+}
+
+async function findOrCreateAuthor(client, name) {
+  const authorName = typeof name === 'string' ? name.trim() : '';
+  if (!authorName) return null;
+
+  const db = client || pool;
+  const existing = await db.query(
+    'SELECT author_id FROM authors WHERE LOWER(name) = LOWER($1)',
+    [authorName]
+  );
+
+  if (existing.rows[0]) {
+    return existing.rows[0].author_id;
+  }
+
+  const result = await db.query(
+    'INSERT INTO authors (name) VALUES ($1) RETURNING author_id',
+    [authorName]
+  );
+
+  return result.rows[0]?.author_id || null;
+}
+
+function normalizeGoogleBookMetadata(item) {
+  const info = item?.volumeInfo || {};
+  const isbn =
+    (info.industryIdentifiers || []).find((id) => id.type === 'ISBN_13')?.identifier ||
+    (info.industryIdentifiers || []).find((id) => id.type === 'ISBN_10')?.identifier ||
+    '';
+  const published = info.publishedDate || '';
+  const match = String(published).match(/\d{4}/);
+  const publication_year = match ? Number(match[0]) : null;
+  const description = typeof info.description === 'string'
+    ? info.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    : '';
+  const cover_url =
+    info.imageLinks?.extraLarge ||
+    info.imageLinks?.large ||
+    info.imageLinks?.medium ||
+    info.imageLinks?.thumbnail ||
+    '';
+
+  return {
+    title: info.title || '',
+    isbn,
+    description,
+    publication_year,
+    cover_url,
+    authors: Array.isArray(info.authors) ? info.authors : [],
+    publisher: info.publisher || ''
+  };
+}
+
+async function fetchOpenLibraryMetadata(query) {
+  const normalized = String(query || '').trim();
+  if (!normalized) return null;
+
+  try {
+    const response = await fetch(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(normalized)}&limit=1`
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const doc = data.docs?.[0];
+    if (!doc) return null;
+
+    const isbn = Array.isArray(doc.isbn) ? doc.isbn.find((value) => value && value.length >= 10) || doc.isbn[0] : '';
+    const cover_id = doc.cover_i;
+    const cover_url = cover_id ? `https://covers.openlibrary.org/b/id/${cover_id}-L.jpg` : '';
+
+    return {
+      title: doc.title || '',
+      isbn: isbn || '',
+      description: '',
+      publication_year: doc.first_publish_year || null,
+      cover_url,
+      authors: Array.isArray(doc.author_name) ? doc.author_name : [],
+      publisher: Array.isArray(doc.publisher) ? doc.publisher[0] || '' : ''
+    };
+  } catch (err) {
+    console.warn('Open Library fallback failed:', err.message);
+    return null;
+  }
+}
+
 // All routes below require a valid admin token
 router.use(verifyToken, requireAdmin);
+
+router.get('/lookup-external-book', async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+  if (!q) {
+    return res.status(400).json({ error: 'Please enter a title or ISBN to look up.' });
+  }
+
+  const cleanQuery = q.replace(/\s+/g, ' ').trim();
+  const isIsbn = /^[\d\s-]{10,17}$/.test(cleanQuery.replace(/-/g, ''));
+  const googleSearchTerm = isIsbn ? `isbn:${cleanQuery}` : `intitle:${cleanQuery}`;
+
+  try {
+    const googleResponse = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(googleSearchTerm)}&maxResults=1`
+    );
+
+    if (googleResponse.ok) {
+      const googleData = await googleResponse.json();
+      const item = googleData.items?.[0];
+
+      if (item) {
+        const normalized = normalizeGoogleBookMetadata(item);
+        if (normalized.title) {
+          return res.json(normalized);
+        }
+      }
+    } else if (googleResponse.status !== 429) {
+      console.warn('Google Books lookup returned non-429 error:', googleResponse.status);
+    }
+
+    const fallback = await fetchOpenLibraryMetadata(cleanQuery);
+    if (fallback && fallback.title) {
+      return res.json(fallback);
+    }
+
+    return res.status(404).json({ error: 'No book metadata found for that title or ISBN.' });
+  } catch (err) {
+    console.error('Error looking up external book metadata:', err.message);
+
+    try {
+      const fallback = await fetchOpenLibraryMetadata(cleanQuery);
+      if (fallback && fallback.title) {
+        return res.json(fallback);
+      }
+    } catch (fallbackErr) {
+      console.error('Fallback lookup also failed:', fallbackErr.message);
+    }
+
+    res.status(500).json({ error: 'Failed to fetch external book metadata.' });
+  }
+});
 
 // ====================================================================
 // BOOKS  (unchanged)
 // ====================================================================
 
+function parseCategoryIds(rawValue) {
+  const rawArray = Array.isArray(rawValue) ? rawValue : [rawValue];
+  const values = rawArray
+    .flatMap((item) => {
+      if (Array.isArray(item)) return item;
+      if (typeof item === 'string') {
+        if (item.includes(',')) {
+          return item.split(',');
+        }
+        return [item];
+      }
+      return [item];
+    })
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  return [...new Set(values)];
+}
+
 router.post('/books', upload.single('cover_image'), async (req, res) => {
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
   const isbn = typeof req.body.isbn === 'string' ? req.body.isbn.trim() || null : null;
-  const { price, stock_quantity, publication_year, category_id } = req.body;
-  if (!title || !Number.isFinite(Number(price)) || !Number.isInteger(Number(stock_quantity)) || Number(stock_quantity) < 0) {
+  const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+  const publisher_name = typeof req.body.publisher_name === 'string' ? req.body.publisher_name.trim() : '';
+  const author_names = typeof req.body.author_names === 'string' ? req.body.author_names.trim() : '';
+  const categoryIds = parseCategoryIds(req.body.category_ids || req.body.category_id || []);
+  const price = Number(req.body.price);
+  const stock_quantity = Number(req.body.stock_quantity);
+  const publication_year = req.body.publication_year ? Number(req.body.publication_year) : null;
+  const cover_url = req.file ? `/images/books/${req.file.filename}` : (req.body.existing_cover_url || null);
+
+  if (!title || !Number.isFinite(price) || !Number.isInteger(stock_quantity) || stock_quantity < 0) {
     return res.status(400).json({ error: 'Title, valid price, and non-negative stock quantity are required' });
   }
-  if (publication_year && (!Number.isInteger(Number(publication_year)) || Number(publication_year) < 1000 || Number(publication_year) > 2100)) {
+  if (publication_year && (!Number.isInteger(publication_year) || publication_year < 1000 || publication_year > 2100)) {
     return res.status(400).json({ error: 'Publication year must be between 1000 and 2100' });
   }
 
-    const cover_url = req.file ? `/images/books/${req.file.filename}` : null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await client.query(
-            'INSERT INTO books (title, isbn, price, stock_quantity, publication_year, cover_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [title, isbn, Number(price), Number(stock_quantity), publication_year || null, cover_url]
-        );
-      const book = result.rows[0];
-      if (category_id) {
-        await client.query(
-          'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2)',
-          [book.book_id, category_id]
-        );
+    const result = await client.query(
+      'INSERT INTO books (title, isbn, description, price, stock_quantity, publication_year, cover_url, publisher_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [
+        title,
+        isbn,
+        description || null,
+        price,
+        stock_quantity,
+        publication_year || null,
+        cover_url,
+        null
+      ]
+    );
+
+    const book = result.rows[0];
+
+    if (publisher_name) {
+      const publisherId = await findOrCreatePublisher(client, publisher_name);
+      if (publisherId) {
+        await client.query('UPDATE books SET publisher_id = $1 WHERE book_id = $2', [publisherId, book.book_id]);
       }
-      await client.query('COMMIT');
-      res.status(201).json(book);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      if (err.code === '23505') {
-        res.status(409).json({ error: 'A book with this ISBN already exists' });
-        return;
-      }
-        console.error('Error adding book:', err);
-        res.status(500).json({ error: err.message || 'Internal Server Error' });
-    } finally {
-      client.release();
     }
+
+    if (author_names) {
+      const authors = author_names
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      for (const authorName of authors) {
+        const authorId = await findOrCreateAuthor(client, authorName);
+        if (authorId) {
+          await client.query(
+            'INSERT INTO book_authors (book_id, author_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [book.book_id, authorId]
+          );
+        }
+      }
+    }
+
+    if (categoryIds.length > 0) {
+      for (const categoryId of categoryIds) {
+        await client.query(
+          'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [book.book_id, categoryId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json(book);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') {
+      res.status(409).json({ error: 'A book with this ISBN already exists' });
+      return;
+    }
+    console.error('Error adding book:', err);
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
+  } finally {
+    client.release();
+  }
 });
 
 router.get('/books', async (req, res) => {
@@ -85,25 +311,51 @@ router.get('/books', async (req, res) => {
 
 router.put('/books/:id', upload.single('cover_image'), async (req, res) => {
     const { id } = req.params;
-    const { title, isbn, price, stock_quantity, publication_year, existing_cover_url, category_id } = req.body;
-
-    const cover_url = req.file ? `/images/books/${req.file.filename}` : (existing_cover_url || null);
+    const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+    const isbn = typeof req.body.isbn === 'string' ? req.body.isbn.trim() || null : null;
+    const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+    const publisher_name = typeof req.body.publisher_name === 'string' ? req.body.publisher_name.trim() : '';
+    const author_names = typeof req.body.author_names === 'string' ? req.body.author_names.trim() : '';
+    const categoryIds = parseCategoryIds(req.body.category_ids || req.body.category_id || []);
+    const price = Number(req.body.price);
+    const stock_quantity = Number(req.body.stock_quantity);
+    const publication_year = req.body.publication_year ? Number(req.body.publication_year) : null;
+    const cover_url = req.file ? `/images/books/${req.file.filename}` : (req.body.existing_cover_url || null);
 
     try {
         const result = await pool.query(
-            'UPDATE books SET title = $1, isbn = $2, price = $3, stock_quantity = $4, publication_year = $5, cover_url = $6 WHERE book_id = $7 RETURNING *',
-            [title, isbn, price, stock_quantity, publication_year, cover_url, id]
+            'UPDATE books SET title = $1, isbn = $2, description = $3, price = $4, stock_quantity = $5, publication_year = $6, cover_url = $7 WHERE book_id = $8 RETURNING *',
+            [title, isbn, description || null, price, stock_quantity, publication_year || null, cover_url, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Book not found' });
         }
-        await pool.query('DELETE FROM book_categories WHERE book_id = $1', [id]);
-        if (category_id) {
-          await pool.query(
-            'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2)',
-            [id, category_id]
-          );
+
+        if (publisher_name) {
+          const publisherId = await findOrCreatePublisher(pool, publisher_name);
+          if (publisherId) {
+            await pool.query('UPDATE books SET publisher_id = $1 WHERE book_id = $2', [publisherId, id]);
+          }
         }
+
+        await pool.query('DELETE FROM book_authors WHERE book_id = $1', [id]);
+        if (author_names) {
+          const authors = author_names.split(',').map((name) => name.trim()).filter(Boolean);
+          for (const authorName of authors) {
+            const authorId = await findOrCreateAuthor(pool, authorName);
+            if (authorId) {
+              await pool.query('INSERT INTO book_authors (book_id, author_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, authorId]);
+            }
+          }
+        }
+
+        await pool.query('DELETE FROM book_categories WHERE book_id = $1', [id]);
+        if (categoryIds.length > 0) {
+          for (const categoryId of categoryIds) {
+            await pool.query('INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, categoryId]);
+          }
+        }
+
         res.status(200).json(result.rows[0]);
     } catch (err) {
         console.error('Error updating book:', err);
@@ -119,6 +371,195 @@ router.get('/categories', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching admin categories:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.post('/categories', async (req, res) => {
+  const categoryName = typeof req.body.category_name === 'string'
+    ? req.body.category_name.trim()
+    : '';
+
+  if (!categoryName) {
+    return res.status(400).json({ error: 'Category name is required.' });
+  }
+
+  const cleanCategoryName = categoryName.replace(/\s+/g, ' ');
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO categories (category_name)
+       VALUES ($1)
+       ON CONFLICT (category_name) DO NOTHING
+       RETURNING category_id, category_name`,
+      [cleanCategoryName]
+    );
+
+    if (result.rows.length > 0) {
+      return res.status(201).json(result.rows[0]);
+    }
+
+    const existing = await pool.query(
+      'SELECT category_id, category_name FROM categories WHERE LOWER(category_name) = LOWER($1)',
+      [cleanCategoryName]
+    );
+
+    return res.status(200).json(existing.rows[0] || { category_name: cleanCategoryName });
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/coupons', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.*,
+        (c.expiry_date IS NOT NULL AND c.expiry_date < CURRENT_DATE) AS expired
+      FROM coupons c
+      ORDER BY c.is_active DESC, c.expiry_date ASC NULLS LAST, c.coupon_id DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching coupons:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.post('/coupons', async (req, res) => {
+  const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+  const discountPercent = Number(req.body.discount_percent);
+  const minOrderAmount = Number(req.body.min_order_amount ?? 0);
+  const maxDiscount = req.body.max_discount === null || req.body.max_discount === undefined || req.body.max_discount === ''
+    ? null
+    : Number(req.body.max_discount);
+  const expiryDate = typeof req.body.expiry_date === 'string' && req.body.expiry_date ? req.body.expiry_date : null;
+
+  if (!code || !/^[A-Z0-9_-]+$/.test(code)) {
+    return res.status(400).json({ error: 'Coupon code is required and may contain only letters, numbers, underscores, and dashes.' });
+  }
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+    return res.status(400).json({ error: 'Discount must be between 0 and 100 percent.' });
+  }
+  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) {
+    return res.status(400).json({ error: 'Minimum order amount must be zero or more.' });
+  }
+  if (maxDiscount !== null && (!Number.isFinite(maxDiscount) || maxDiscount < 0)) {
+    return res.status(400).json({ error: 'Maximum discount must be zero or more.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO coupons (code, discount_percent, expiry_date, min_order_amount, max_discount, is_active)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       RETURNING *`,
+      [code, discountPercent, expiryDate || null, minOrderAmount, maxDiscount]
+    );
+
+    const coupon = result.rows[0];
+    await notifyAllCustomers({
+      text: `New coupon ${coupon.code} is now live: ${coupon.discount_percent}% off on orders of Tk ${coupon.min_order_amount || 0}+.`,
+      topic: 'general',
+      referenceType: 'coupon',
+      referenceId: coupon.coupon_id,
+    });
+
+    res.status(201).json(coupon);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A coupon with this code already exists.' });
+    }
+    console.error('Error creating coupon:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.put('/coupons/:id', async (req, res) => {
+  const couponId = Number(req.params.id);
+  if (!Number.isInteger(couponId)) {
+    return res.status(400).json({ error: 'Invalid coupon id.' });
+  }
+
+  const fields = [];
+  const values = [];
+
+  if (req.body.code !== undefined) {
+    const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+    if (!code || !/^[A-Z0-9_-]+$/.test(code)) {
+      return res.status(400).json({ error: 'Coupon code is invalid.' });
+    }
+    fields.push('code = $' + (fields.length + 1));
+    values.push(code);
+  }
+  if (req.body.discount_percent !== undefined) {
+    const discountPercent = Number(req.body.discount_percent);
+    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      return res.status(400).json({ error: 'Discount must be between 0 and 100 percent.' });
+    }
+    fields.push('discount_percent = $' + (fields.length + 1));
+    values.push(discountPercent);
+  }
+  if (req.body.min_order_amount !== undefined) {
+    const minOrderAmount = Number(req.body.min_order_amount ?? 0);
+    if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) {
+      return res.status(400).json({ error: 'Minimum order amount must be zero or more.' });
+    }
+    fields.push('min_order_amount = $' + (fields.length + 1));
+    values.push(minOrderAmount);
+  }
+  if (req.body.max_discount !== undefined) {
+    const maxDiscount = req.body.max_discount === null || req.body.max_discount === '' ? null : Number(req.body.max_discount);
+    if (maxDiscount !== null && (!Number.isFinite(maxDiscount) || maxDiscount < 0)) {
+      return res.status(400).json({ error: 'Maximum discount must be zero or more.' });
+    }
+    fields.push('max_discount = $' + (fields.length + 1));
+    values.push(maxDiscount);
+  }
+  if (req.body.expiry_date !== undefined) {
+    const expiryDate = req.body.expiry_date ? String(req.body.expiry_date) : null;
+    fields.push('expiry_date = $' + (fields.length + 1));
+    values.push(expiryDate);
+  }
+  if (req.body.is_active !== undefined) {
+    const isActive = Boolean(req.body.is_active);
+    fields.push('is_active = $' + (fields.length + 1));
+    values.push(isActive);
+  }
+
+  if (fields.length === 0) {
+    return res.status(400).json({ error: 'No coupon fields were supplied.' });
+  }
+
+  try {
+    values.push(couponId);
+    const result = await pool.query(
+      `UPDATE coupons
+       SET ${fields.join(', ')}
+       WHERE coupon_id = $${values.length}
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found.' });
+    }
+
+    const updatedCoupon = result.rows[0];
+    if (updatedCoupon.is_active) {
+      await notifyAllCustomers({
+        text: `Coupon ${updatedCoupon.code} is now active: ${updatedCoupon.discount_percent}% off with a minimum spend of Tk ${updatedCoupon.min_order_amount || 0}.`,
+        topic: 'general',
+        referenceType: 'coupon',
+        referenceId: updatedCoupon.coupon_id,
+      });
+    }
+
+    res.json(updatedCoupon);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A coupon with this code already exists.' });
+    }
+    console.error('Error updating coupon:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

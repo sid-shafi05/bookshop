@@ -5,30 +5,47 @@ import './AdminDashboard.css';
 import NotificationBell from './NotificationBell';
 
 const EMPTY_FORM = {
-  title: '', isbn: '', price: '', stock_quantity: '', publication_year: '',
-  category_id: '',
+  title: '', isbn: '', description: '', publisher_name: '', author_names: '',
+  price: '', stock_quantity: '', publication_year: '',
+  category_ids: [],
   cover_url: '',
   cover_file: null,
   cover_preview: '',
 };
 
-const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'cancelled', 'returned'];
+const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'cancelled'];
 const DELIVERY_STATUSES = [
   'preparing',
   'picked_up',
   'in_transit',
   'out_for_delivery',
-  'delivered',
-  'failed'
+  'delivered'
 ];
-
-const DEFAULT_CATEGORIES = [
+const DEFAULT_CATEGORY_NAMES = [
   'Fiction & Literature',
   'Self-Development',
   'Computer Science & Tech',
   'Sci-Fi & Fantasy',
   'Academic & Education',
-  'Classics'
+  'Classics',
+  'Business & Economics',
+  'History & Politics',
+  'Children\'s Books',
+  'Poetry & Literature',
+  'Travel & Lifestyle',
+  'Bangla Literature',
+  'Romance',
+  'Mystery & Thriller',
+  'Comics & Manga',
+  'Religion & Spirituality',
+  'Health & Wellness',
+  'Cooking & Food',
+  'Art & Design',
+  'Music',
+  'Sports & Fitness',
+  'Technology & Innovation',
+  'Biography & Memoir',
+  'Philosophy & Psychology'
 ];
 
 function formatPaymentMethod(method) {
@@ -71,15 +88,15 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
         />
 
         <TabButton
-          label="Orders"
-          active={activeTab === 'orders'}
-          onClick={() => setActiveTab('orders')}
+          label="Coupons"
+          active={activeTab === 'coupons'}
+          onClick={() => setActiveTab('coupons')}
         />
 
         <TabButton
-          label="Returns"
-          active={activeTab === 'returns'}
-          onClick={() => setActiveTab('returns')}
+          label="Orders"
+          active={activeTab === 'orders'}
+          onClick={() => setActiveTab('orders')}
         />
 
         <TabButton
@@ -97,8 +114,8 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
 
       <div className="admin-panel">
         {activeTab === 'books' && <BooksTab />}
+        {activeTab === 'coupons' && <CouponsTab />}
         {activeTab === 'orders' && <OrdersTab />}
-        {activeTab === 'returns' && <ReturnsTab />}
         {activeTab === 'deliverymen' && <DeliverymenTab />}
         {activeTab === 'coupons' && <CouponsTab />} 
         {activeTab === 'users' && <UsersTab />}
@@ -133,9 +150,29 @@ function BooksTab() {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
+
+  const refreshCategories = async () => {
+    try {
+      const data = await api.getAdminCategories();
+      const fallbackOptions = DEFAULT_CATEGORY_NAMES.map((category_name, index) => ({
+        category_id: index + 1,
+        category_name
+      }));
+      setCategoryOptions(Array.isArray(data) && data.length ? data : fallbackOptions);
+    } catch (err) {
+      console.error('Failed to refresh categories:', err);
+      setCategoryOptions(
+        DEFAULT_CATEGORY_NAMES.map((category_name, index) => ({
+          category_id: index + 1,
+          category_name
+        }))
+      );
+    }
+  };
 
   const loadBooks = async () => {
     try {
@@ -155,40 +192,44 @@ function BooksTab() {
 
   useEffect(() => {
     loadBooks();
-
-    api.getAdminCategories()
-      .then((data) =>
-        setCategoryOptions(
-          data.length
-            ? data
-            : DEFAULT_CATEGORIES.map((category_name, category_id) => ({
-                category_id: category_id + 1,
-                category_name
-              }))
-        )
-      )
-      .catch(() =>
-        setCategoryOptions(
-          DEFAULT_CATEGORIES.map((category_name, category_id) => ({
-            category_id: category_id + 1,
-            category_name
-          }))
-        )
-      );
+    refreshCategories();
   }, []);
+
+  const handleAddCategory = async (categoryText) => {
+    const trimmed = String(categoryText || '').trim();
+
+    if (!trimmed) {
+      alert('Please enter a category name.');
+      return;
+    }
+
+    try {
+      await api.createCategory(trimmed);
+      setNewCategoryName('');
+      await refreshCategories();
+    } catch (err) {
+      alert(err.message || 'Failed to create category');
+    }
+  };
 
   const buildFormData = (form) => {
     const fd = new FormData();
 
     fd.append('title', form.title);
     fd.append('isbn', form.isbn || '');
+    fd.append('description', form.description || '');
+    fd.append('publisher_name', form.publisher_name || '');
+    fd.append('author_names', form.author_names || '');
     fd.append('price', Number(form.price));
     fd.append('stock_quantity', Number(form.stock_quantity));
     fd.append(
       'publication_year',
       form.publication_year ? Number(form.publication_year) : ''
     );
-    fd.append('category_id', form.category_id || '');
+
+    if (Array.isArray(form.category_ids)) {
+      form.category_ids.forEach((categoryId) => fd.append('category_ids', categoryId));
+    }
 
     if (form.cover_file) {
       fd.append('cover_image', form.cover_file);
@@ -223,10 +264,11 @@ function BooksTab() {
       price: book.price ?? '',
       stock_quantity: book.stock_quantity ?? '',
       publication_year: book.publication_year ?? '',
-      category_id:
-        categoryOptions.find((category) =>
-          (book.categories || []).includes(category.category_name)
-        )?.category_id || '',
+      category_ids: (book.categories || [])
+        .map((categoryName) =>
+          categoryOptions.find((category) => category.category_name === categoryName)?.category_id
+        )
+        .filter(Boolean),
       cover_url: book.cover_url || '',
       cover_file: null,
       cover_preview: '',
@@ -355,6 +397,7 @@ function BooksTab() {
             form={createForm}
             setForm={setCreateForm}
             categories={categoryOptions}
+            onAddCategory={handleAddCategory}
           />
 
           <div className="admin-form-actions">
@@ -398,6 +441,7 @@ function BooksTab() {
                         form={editForm}
                         setForm={setEditForm}
                         categories={categoryOptions}
+                        onAddCategory={handleAddCategory}
                       />
 
                       <div className="admin-form-actions">
@@ -422,7 +466,11 @@ function BooksTab() {
                     {book.cover_url && (
                       <img
                         className="admin-table-thumb"
-                        src={`http://localhost:3000${book.cover_url}`}
+                        src={
+                          book.cover_url.startsWith('http')
+                            ? book.cover_url
+                            : `http://localhost:3000${book.cover_url}`
+                        }
                         alt={book.title}
                       />
                     )}
@@ -481,7 +529,37 @@ function BooksTab() {
 }
 
 
-function BookFormFields({ form, setForm, categories }) {
+function BookFormFields({ form, setForm, categories, onAddCategory }) {
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  const selectedCategoryNames = (form.category_ids || [])
+    .map((categoryId) => categories.find((category) => String(category.category_id) === String(categoryId))?.category_name)
+    .filter(Boolean);
+
+  const toggleCategory = (categoryId) => {
+    const current = new Set(form.category_ids || []);
+    const categoryKey = String(categoryId);
+
+    if (current.has(categoryKey)) {
+      current.delete(categoryKey);
+    } else {
+      current.add(categoryKey);
+    }
+
+    setForm({
+      ...form,
+      category_ids: [...current]
+    });
+  };
+
+  const handleAddNewCategory = async () => {
+    if (!onAddCategory) return;
+    await onAddCategory(newCategoryName);
+    setNewCategoryName('');
+    setShowCategoryPicker(true);
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
 
@@ -492,23 +570,27 @@ function BookFormFields({ form, setForm, categories }) {
     setForm({
       ...form,
       cover_file: file,
-      cover_preview: previewUrl
+      cover_preview: previewUrl,
+      cover_url: ''
     });
   };
 
   return (
     <div className="admin-form-grid">
-      <input
-        placeholder="Title"
-        required
-        value={form.title}
-        onChange={(e) =>
-          setForm({
-            ...form,
-            title: e.target.value
-          })
-        }
-      />
+      <div style={{ gridColumn: '1 / -1' }}>
+        <input
+          placeholder="Title"
+          required
+          value={form.title}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              title: e.target.value
+            })
+          }
+          style={{ width: '100%' }}
+        />
+      </div>
 
       <input
         placeholder="ISBN"
@@ -517,6 +599,28 @@ function BookFormFields({ form, setForm, categories }) {
           setForm({
             ...form,
             isbn: e.target.value
+          })
+        }
+      />
+
+      <input
+        placeholder="Publisher"
+        value={form.publisher_name}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            publisher_name: e.target.value
+          })
+        }
+      />
+
+      <input
+        placeholder="Authors"
+        value={form.author_names}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            author_names: e.target.value
           })
         }
       />
@@ -560,26 +664,74 @@ function BookFormFields({ form, setForm, categories }) {
         }
       />
 
-      <select
-        value={form.category_id}
+      <div className="admin-category-picker">
+        <button
+          type="button"
+          className="admin-icon-btn admin-category-picker-trigger"
+          onClick={() => setShowCategoryPicker((value) => !value)}
+        >
+          {selectedCategoryNames.length > 0
+            ? `Choose Categories (${selectedCategoryNames.length})`
+            : 'Choose Categories'}
+        </button>
+
+        {showCategoryPicker && (
+          <div className="admin-category-picker-menu">
+            {categories.map((category) => {
+              const checked = (form.category_ids || []).includes(String(category.category_id));
+
+              return (
+                <label
+                  key={category.category_id}
+                  className="admin-category-option"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleCategory(category.category_id)}
+                  />
+                  <span>{category.category_name}</span>
+                </label>
+              );
+            })}
+
+            <div className="admin-category-create-row">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Create new category"
+              />
+              <button type="button" className="admin-icon-btn" onClick={handleAddNewCategory}>
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        {selectedCategoryNames.length > 0 && (
+          <div className="admin-selected-categories">
+            {selectedCategoryNames.map((categoryName) => (
+              <span key={categoryName} className="admin-selected-category-pill">
+                {categoryName}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <textarea
+        placeholder="Description"
+        value={form.description}
         onChange={(e) =>
           setForm({
             ...form,
-            category_id: e.target.value
+            description: e.target.value
           })
         }
-      >
-        <option value="">No category</option>
-
-        {categories.map((category) => (
-          <option
-            key={category.category_id}
-            value={category.category_id}
-          >
-            {category.category_name}
-          </option>
-        ))}
-      </select>
+        rows={4}
+        style={{ gridColumn: '1 / -1' }}
+      />
 
       <input
         type="file"
@@ -593,7 +745,9 @@ function BookFormFields({ form, setForm, categories }) {
           <img
             src={
               form.cover_preview ||
-              `http://localhost:3000${form.cover_url}`
+              (form.cover_url.startsWith('http')
+                ? form.cover_url
+                : `http://localhost:3000${form.cover_url}`)
             }
             alt="Cover preview"
           />
@@ -613,6 +767,175 @@ function BookFormFields({ form, setForm, categories }) {
 /* ==========================================================================
    ORDERS TAB — status flow
    ========================================================================== */
+
+function CouponsTab() {
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    code: '',
+    discount_percent: '10',
+    min_order_amount: '300',
+    max_discount: '',
+    expiry_date: '',
+  });
+
+  const loadCoupons = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAdminCoupons();
+      setCoupons(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load coupons:', err);
+      alert(err.message || 'Failed to load coupons');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCoupons();
+  }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await api.createCoupon({
+        code: form.code,
+        discount_percent: Number(form.discount_percent),
+        min_order_amount: Number(form.min_order_amount || 0),
+        max_discount: form.max_discount === '' ? null : Number(form.max_discount),
+        expiry_date: form.expiry_date || null,
+      });
+      setForm({ code: '', discount_percent: '10', min_order_amount: '300', max_discount: '', expiry_date: '' });
+      loadCoupons();
+    } catch (err) {
+      alert(err.message || 'Failed to create coupon');
+    }
+  };
+
+  const handleToggle = async (coupon) => {
+    try {
+      await api.updateCoupon(coupon.coupon_id, { is_active: !coupon.is_active });
+      loadCoupons();
+    } catch (err) {
+      alert(err.message || 'Failed to update coupon');
+    }
+  };
+
+  if (loading) return <p className="admin-state-msg">Loading coupons...</p>;
+
+  return (
+    <div>
+      <div className="admin-panel-toolbar">
+        <h3>Coupons</h3>
+      </div>
+
+      <form className="admin-form-card coupon-form" onSubmit={handleCreate}>
+        <div className="admin-form-grid coupon-grid">
+          <div className="coupon-field">
+            <label htmlFor="coupon-code">Code</label>
+            <input
+              id="coupon-code"
+              placeholder="WELCOME10"
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              required
+            />
+          </div>
+
+          <div className="coupon-field">
+            <label htmlFor="coupon-discount">Discount %</label>
+            <input
+              id="coupon-discount"
+              type="number"
+              min="0"
+              max="100"
+              placeholder="10"
+              value={form.discount_percent}
+              onChange={(e) => setForm({ ...form, discount_percent: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="coupon-field">
+            <label htmlFor="coupon-min-order">Minimum order</label>
+            <input
+              id="coupon-min-order"
+              type="number"
+              min="0"
+              placeholder="300"
+              value={form.min_order_amount}
+              onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="coupon-field">
+            <label htmlFor="coupon-max-discount">Max discount</label>
+            <input
+              id="coupon-max-discount"
+              type="number"
+              min="0"
+              placeholder="200"
+              value={form.max_discount}
+              onChange={(e) => setForm({ ...form, max_discount: e.target.value })}
+            />
+          </div>
+
+          <div className="coupon-field">
+            <label htmlFor="coupon-expiry">Expiry date</label>
+            <input
+              id="coupon-expiry"
+              type="date"
+              value={form.expiry_date}
+              onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
+            />
+          </div>
+        </div>
+        <div className="admin-form-actions">
+          <button type="submit" className="btn-save">Publish Coupon</button>
+        </div>
+      </form>
+
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Discount</th>
+            <th>Minimum</th>
+            <th>Expiry</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {coupons.length === 0 ? (
+            <tr><td colSpan={6} className="admin-empty-row">No coupons created yet.</td></tr>
+          ) : (
+            coupons.map((coupon) => (
+              <tr key={coupon.coupon_id}>
+                <td>{coupon.code}</td>
+                <td>{Number(coupon.discount_percent).toFixed(0)}%</td>
+                <td>Tk {Number(coupon.min_order_amount || 0).toFixed(2)}</td>
+                <td>{coupon.expiry_date ? new Date(coupon.expiry_date).toLocaleDateString() : 'No expiry'}</td>
+                <td>
+                  <span className={`admin-stock-pill ${coupon.is_active ? 'ok' : 'low'}`}>
+                    {coupon.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <button className="admin-icon-btn" onClick={() => handleToggle(coupon)}>
+                    {coupon.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function OrdersTab() {
   const [orders, setOrders] = useState([]);
@@ -827,19 +1150,30 @@ function OrdersTab() {
                   </td>
 
                   <td>
-                    <span
-                      className={`admin-stock-pill ${
-                        order.payment_status === 'paid'
-                          ? 'ok'
-                          : 'low'
-                      }`}
-                    >
-                      {order.payment_status}
-                    </span>
+                    {order.status === 'cancelled' ? (
+                      <span
+                        style={{
+                          color: '#8c827a',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        —
+                      </span>
+                    ) : (
+                      <span
+                        className={`admin-stock-pill ${
+                          order.payment_status === 'paid'
+                            ? 'ok'
+                            : 'low'
+                        }`}
+                      >
+                        {order.payment_status}
+                      </span>
+                    )}
                   </td>
 
                   <td>
-                    {['shipped', 'delivered'].includes(
+                    {['shipped', 'delivered', 'cancelled'].includes(
                       order.status
                     ) ? (
                       <span
