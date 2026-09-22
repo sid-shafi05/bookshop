@@ -588,4 +588,21 @@ ALTER TABLE coupons ADD CONSTRAINT coupon_usage_limit_check
   CHECK (usage_limit IS NULL OR usage_limit > 0);
  
 COMMIT;
- 
+ WITH palette AS (
+  SELECT unnest(ARRAY['4A90D9','D9924A','8B4AD9','2C3E50','D9497A','2E8B8B','C0392B','16A085','8E44AD','2980B9']) AS hex
+),
+book_author_names AS (
+  SELECT ba.book_id, string_agg(a.name, ', ' ORDER BY a.name) AS authors
+  FROM public.book_authors ba
+  JOIN public.authors a ON a.author_id = ba.author_id
+  GROUP BY ba.book_id
+)
+UPDATE public.books b
+SET cover_url = 'https://placehold.co/300x450/'
+    || (SELECT hex FROM palette ORDER BY random() LIMIT 1)
+    || '/ffffff/png?text='
+    || replace(left(b.title, 40), ' ', '+')
+    || '%0Aby+'
+    || replace(coalesce(left(ban.authors, 30), 'Unknown'), ' ', '+')
+FROM book_author_names ban
+WHERE b.book_id = ban.book_id;

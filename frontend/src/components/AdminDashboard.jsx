@@ -104,7 +104,6 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
           active={activeTab === 'deliverymen'}
           onClick={() => setActiveTab('deliverymen')}
         />
-<TabButton label="Coupons" active={activeTab === 'coupons'} onClick={() => setActiveTab('coupons')} />  
         <TabButton
           label="Users"
           active={activeTab === 'users'}
@@ -117,7 +116,6 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
         {activeTab === 'coupons' && <CouponsTab />}
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'deliverymen' && <DeliverymenTab />}
-        {activeTab === 'coupons' && <CouponsTab />} 
         {activeTab === 'users' && <UsersTab />}
       </div>
     </main>
@@ -768,174 +766,6 @@ function BookFormFields({ form, setForm, categories, onAddCategory }) {
    ORDERS TAB — status flow
    ========================================================================== */
 
-function CouponsTab() {
-  const [coupons, setCoupons] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({
-    code: '',
-    discount_percent: '10',
-    min_order_amount: '300',
-    max_discount: '',
-    expiry_date: '',
-  });
-
-  const loadCoupons = async () => {
-    try {
-      setLoading(true);
-      const data = await api.getAdminCoupons();
-      setCoupons(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to load coupons:', err);
-      alert(err.message || 'Failed to load coupons');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadCoupons();
-  }, []);
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    try {
-      await api.createCoupon({
-        code: form.code,
-        discount_percent: Number(form.discount_percent),
-        min_order_amount: Number(form.min_order_amount || 0),
-        max_discount: form.max_discount === '' ? null : Number(form.max_discount),
-        expiry_date: form.expiry_date || null,
-      });
-      setForm({ code: '', discount_percent: '10', min_order_amount: '300', max_discount: '', expiry_date: '' });
-      loadCoupons();
-    } catch (err) {
-      alert(err.message || 'Failed to create coupon');
-    }
-  };
-
-  const handleToggle = async (coupon) => {
-    try {
-      await api.updateCoupon(coupon.coupon_id, { is_active: !coupon.is_active });
-      loadCoupons();
-    } catch (err) {
-      alert(err.message || 'Failed to update coupon');
-    }
-  };
-
-  if (loading) return <p className="admin-state-msg">Loading coupons...</p>;
-
-  return (
-    <div>
-      <div className="admin-panel-toolbar">
-        <h3>Coupons</h3>
-      </div>
-
-      <form className="admin-form-card coupon-form" onSubmit={handleCreate}>
-        <div className="admin-form-grid coupon-grid">
-          <div className="coupon-field">
-            <label htmlFor="coupon-code">Code</label>
-            <input
-              id="coupon-code"
-              placeholder="WELCOME10"
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-              required
-            />
-          </div>
-
-          <div className="coupon-field">
-            <label htmlFor="coupon-discount">Discount %</label>
-            <input
-              id="coupon-discount"
-              type="number"
-              min="0"
-              max="100"
-              placeholder="10"
-              value={form.discount_percent}
-              onChange={(e) => setForm({ ...form, discount_percent: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="coupon-field">
-            <label htmlFor="coupon-min-order">Minimum order</label>
-            <input
-              id="coupon-min-order"
-              type="number"
-              min="0"
-              placeholder="300"
-              value={form.min_order_amount}
-              onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="coupon-field">
-            <label htmlFor="coupon-max-discount">Max discount</label>
-            <input
-              id="coupon-max-discount"
-              type="number"
-              min="0"
-              placeholder="200"
-              value={form.max_discount}
-              onChange={(e) => setForm({ ...form, max_discount: e.target.value })}
-            />
-          </div>
-
-          <div className="coupon-field">
-            <label htmlFor="coupon-expiry">Expiry date</label>
-            <input
-              id="coupon-expiry"
-              type="date"
-              value={form.expiry_date}
-              onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-            />
-          </div>
-        </div>
-        <div className="admin-form-actions">
-          <button type="submit" className="btn-save">Publish Coupon</button>
-        </div>
-      </form>
-
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Discount</th>
-            <th>Minimum</th>
-            <th>Expiry</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {coupons.length === 0 ? (
-            <tr><td colSpan={6} className="admin-empty-row">No coupons created yet.</td></tr>
-          ) : (
-            coupons.map((coupon) => (
-              <tr key={coupon.coupon_id}>
-                <td>{coupon.code}</td>
-                <td>{Number(coupon.discount_percent).toFixed(0)}%</td>
-                <td>Tk {Number(coupon.min_order_amount || 0).toFixed(2)}</td>
-                <td>{coupon.expiry_date ? new Date(coupon.expiry_date).toLocaleDateString() : 'No expiry'}</td>
-                <td>
-                  <span className={`admin-stock-pill ${coupon.is_active ? 'ok' : 'low'}`}>
-                    {coupon.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td>
-                  <button className="admin-icon-btn" onClick={() => handleToggle(coupon)}>
-                    {coupon.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 function OrdersTab() {
   const [orders, setOrders] = useState([]);
