@@ -105,6 +105,11 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
           onClick={() => setActiveTab('deliverymen')}
         />
         <TabButton
+          label="Returns"
+          active={activeTab === 'returns'}
+          onClick={() => setActiveTab('returns')}
+        />
+        <TabButton
           label="Users"
           active={activeTab === 'users'}
           onClick={() => setActiveTab('users')}
@@ -116,6 +121,7 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
         {activeTab === 'coupons' && <CouponsTab />}
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'deliverymen' && <DeliverymenTab />}
+        {activeTab === 'returns' && <ReturnsTab />}
         {activeTab === 'users' && <UsersTab />}
       </div>
     </main>
@@ -935,7 +941,6 @@ function OrdersTab() {
             <th>Total</th>
             <th>Payment</th>
             <th>Status</th>
-            <th>Fulfillment</th>
           </tr>
         </thead>
 
@@ -943,7 +948,7 @@ function OrdersTab() {
           {orders.length === 0 ? (
             <tr>
               <td
-                colSpan={6}
+                colSpan={5}
                 className="admin-empty-row"
               >
                 No orders found.
@@ -994,10 +999,14 @@ function OrdersTab() {
                         className={`admin-stock-pill ${
                           order.payment_status === 'paid'
                             ? 'ok'
+                            : order.payment_status === 'partial_refund'
+                            ? 'low'
+                            : order.payment_status === 'refunded'
+                            ? 'out'
                             : 'low'
                         }`}
                       >
-                        {order.payment_status}
+                        {order.payment_status === 'partial_refund' ? 'Partial Refund' : order.payment_status === 'refunded' ? 'Refunded' : order.payment_status}
                       </span>
                     )}
                   </td>
@@ -1068,58 +1077,13 @@ function OrdersTab() {
                         Awaiting payment
                       </span>
                     )}
-
-                    {order.status === 'shipped' &&
-                      order.delivery_id && (
-                        <div>
-                          <select
-                            className="admin-status-select"
-                            value={
-                              order.delivery_status ||
-                              'picked_up'
-                            }
-                            onClick={(event) =>
-                              event.stopPropagation()
-                            }
-                            onChange={(e) =>
-                              handleDeliveryStatusChange(
-                                order,
-                                e.target.value
-                              )
-                            }
-                          >
-                            {DELIVERY_STATUSES.map((s) => (
-                              <option key={s} value={s}>
-                                {s.replace(/_/g, ' ')}
-                              </option>
-                            ))}
-                          </select>
-
-                          <div
-                            style={{
-                              fontSize: '0.72rem',
-                              color: '#8c827a',
-                              marginTop: 4
-                            }}
-                          >
-                            {order.rider_name} ·{' '}
-                            {order.rider_phone}
-                          </div>
-                        </div>
-                      )}
-
-                    {order.status === 'delivered' && (
-                      <span className="admin-stock-pill ok">
-                        Delivered
-                      </span>
-                    )}
                   </td>
                 </tr>
 
                 {expandedId === order.order_id && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="admin-order-detail-cell"
                       onClick={(event) =>
                         event.stopPropagation()
@@ -1359,6 +1323,8 @@ function ReturnsTab() {
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [resolving, setResolving] = useState({}); // { return_id: 'resellable'|'damaged' }
+  const [expandedReturn, setExpandedReturn] = useState(null); // return_id
 
   const load = async () => {
     try {
@@ -1382,10 +1348,10 @@ function ReturnsTab() {
     load();
   }, []);
 
-  const resolve = async (id, decision) => {
+  const resolve = async (returnId, decision, condition) => {
     try {
-      await api.resolveReturn(id, decision);
-      loadReturnsQuiet();
+      await api.resolveReturn(returnId, decision, condition);
+      load();
     } catch (err) {
       alert(
         err.message ||
@@ -1394,7 +1360,9 @@ function ReturnsTab() {
     }
   };
 
-  const loadReturnsQuiet = () => load();
+  const toggleExpand = (returnId) => {
+    setExpandedReturn(prev => prev === returnId ? null : returnId);
+  };
 
   if (loading) {
     return (
@@ -1425,10 +1393,12 @@ function ReturnsTab() {
           <tr>
             <th>Order</th>
             <th>Customer</th>
+            <th>Book</th>
+            <th>Qty</th>
+            <th>Refund</th>
             <th>Reason</th>
-            <th>Total</th>
             <th>Status</th>
-            <th>Actions</th>
+            <th>Resolved</th>
           </tr>
         </thead>
 
@@ -1436,7 +1406,7 @@ function ReturnsTab() {
           {returns.length === 0 ? (
             <tr>
               <td
-                colSpan={6}
+                colSpan={8}
                 className="admin-empty-row"
               >
                 No return requests.
@@ -1444,87 +1414,131 @@ function ReturnsTab() {
             </tr>
           ) : (
             returns.map((r) => (
-              <tr key={r.return_id}>
-                <td>#{r.order_id}</td>
+              <>
+                <tr key={r.return_id} onClick={() => toggleExpand(r.return_id)} style={{ cursor: 'pointer' }}>
+                  <td>#{r.order_id}</td>
 
-                <td>
-                  <div className="admin-cell-title">
-                    {r.username}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: '#8c827a'
-                    }}
-                  >
-                    {r.email}
-                  </div>
-                </td>
-
-                <td>{r.reason}</td>
-
-                <td>
-                  Tk {Number(r.total_amount).toFixed(2)}
-                </td>
-
-                <td>
-                  <span
-                    className={`admin-stock-pill ${
-                      r.status === 'approved'
-                        ? 'ok'
-                        : r.status === 'rejected'
-                        ? 'out'
-                        : 'low'
-                    }`}
-                  >
-                    {r.status}
-                  </span>
-                </td>
-
-                <td>
-                  {r.status === 'pending' ? (
-                    <div className="admin-actions-cell">
-                      <button
-                        className="admin-icon-btn"
-                        onClick={() =>
-                          resolve(
-                            r.return_id,
-                            'approved'
-                          )
-                        }
-                      >
-                        Approve
-                      </button>
-
-                      <button
-                        className="admin-icon-btn danger"
-                        onClick={() =>
-                          resolve(
-                            r.return_id,
-                            'rejected'
-                          )
-                        }
-                      >
-                        Reject
-                      </button>
+                  <td>
+                    <div className="admin-cell-title">
+                      {r.username}
                     </div>
-                  ) : (
-                    <span
+
+                    <div
                       style={{
                         fontSize: '0.78rem',
                         color: '#8c827a'
                       }}
                     >
-                      {r.resolved_at
-                        ? new Date(
-                            r.resolved_at
-                          ).toLocaleDateString()
-                        : '—'}
+                      {r.email}
+                    </div>
+                  </td>
+
+                  <td>{r.title}</td>
+                  <td>{r.quantity}</td>
+                  <td>Tk {Number(r.refund_amount).toFixed(2)}</td>
+
+                  <td>
+                    <div className="return-reason-cell" title={r.reason} onClick={(e) => e.stopPropagation()}>
+                      {r.reason}
+                    </div>
+                  </td>
+
+                  <td>
+                    <span
+                      className={`admin-stock-pill ${
+                        r.status === 'approved'
+                          ? 'ok'
+                          : r.status === 'rejected'
+                          ? 'out'
+                          : 'low'
+                      }`}
+                    >
+                      {r.status}
+                      {r.condition && <span> ({r.condition})</span>}
                     </span>
-                  )}
-                </td>
-              </tr>
+                  </td>
+
+                  <td>
+                    {r.status === 'requested' ? (
+                      <div className="admin-actions-cell">
+                        <select
+                          value={resolving[r.return_id] || ''}
+                          onChange={(e) => setResolving(prev => ({ ...prev, [r.return_id]: e.target.value }))}
+                          className="admin-select"
+                        >
+                          <option value="" disabled>Approve as...</option>
+                          <option value="resellable">Resellable (restock)</option>
+                          <option value="damaged">Damaged (write off)</option>
+                        </select>
+                        <button
+                          className="admin-icon-btn"
+                          onClick={() => {
+                            const condition = resolving[r.return_id];
+                            if (condition) {
+                              resolve(r.return_id, 'approved', condition);
+                              setResolving(prev => ({ ...prev, [r.return_id]: '' }));
+                            }
+                          }}
+                          disabled={!resolving[r.return_id]}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="admin-icon-btn danger"
+                          onClick={(e) => { e.stopPropagation(); resolve(r.return_id, 'rejected', null); }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '0.78rem',
+                          color: '#8c827a'
+                        }}
+                      >
+                        {r.resolved_at
+                          ? new Date(
+                              r.resolved_at
+                            ).toLocaleDateString()
+                          : '—'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                {expandedReturn === r.return_id && (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="return-expanded-detail">
+                        <div className="return-detail-row">
+                          <strong>Full Reason:</strong>
+                          <p>{r.reason}</p>
+                        </div>
+                        <div className="return-detail-row">
+                          <strong>Requested At:</strong>
+                          <span>{r.requested_at ? new Date(r.requested_at).toLocaleString() : '—'}</span>
+                        </div>
+                        <div className="return-detail-row">
+                          <strong>Order ID:</strong>
+                          <span>#{r.order_id}</span>
+                        </div>
+                        <div className="return-detail-row">
+                          <strong>Customer:</strong>
+                          <span>{r.username} ({r.email})</span>
+                        </div>
+                        <div className="return-detail-row">
+                          <strong>Book:</strong>
+                          <span>{r.title} × {r.quantity}</span>
+                        </div>
+                        <div className="return-detail-row">
+                          <strong>Refund Amount:</strong>
+                          <span>Tk {Number(r.refund_amount).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))
           )}
         </tbody>

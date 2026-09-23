@@ -263,10 +263,14 @@ CREATE TABLE returns (
     return_id SERIAL PRIMARY KEY,
     order_item_id INTEGER NOT NULL,
     customer_id INTEGER NOT NULL,
+    order_id INTEGER REFERENCES orders(order_id) ON DELETE CASCADE,
     return_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,
     reason TEXT NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'requested',
     refund_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    condition VARCHAR(20) CHECK (condition IN ('resellable', 'damaged')),
     CONSTRAINT return_status_check CHECK (status IN ('requested','approved','rejected','processed')),
     CONSTRAINT return_refund_check CHECK (refund_amount >= 0),
     FOREIGN KEY (order_item_id) REFERENCES order_items(order_item_id) ON DELETE RESTRICT,
@@ -429,6 +433,7 @@ ALTER TABLE deliveries
   ADD COLUMN order_id INTEGER REFERENCES orders(order_id) ON DELETE CASCADE,
   ADD COLUMN requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN resolved_at TIMESTAMP,
+  ADD COLUMN condition VARCHAR(20) CHECK (condition IN ('resellable', 'damaged')),
   ALTER COLUMN order_item_id DROP NOT NULL;
 
 ALTER TABLE notifications

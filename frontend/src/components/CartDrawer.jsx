@@ -1,5 +1,5 @@
 // src/components/CartDrawer.jsx
-export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemoveItem, onCheckout }) {
+export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemoveItem, onCheckout, showToast }) {
   if (!isOpen) return null;
 
   return (
@@ -16,57 +16,79 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
               <p>Your cart is empty.</p>
             </div>
           ) : (
-            cart.items.map((item) => (
-              <div key={item.book_id} className="cart-row">
-                <div className="row-info">
-                  <h4>{item.title}</h4>
-                  <span className="row-price">Tk {Number(item.per_book_total).toFixed(2)}</span>
+            cart.items.map((item) => {
+              const availableStock = Number(item.stock_quantity ?? 0);
+              const lowStock = availableStock > 0 && availableStock <= 5;
+              const canAddMore = availableStock > 0 && item.quantity < availableStock;
+
+              return (
+                <div key={item.book_id} className="cart-row">
+                  <div className="row-info">
+                    <h4>{item.title}</h4>
+                    <span className="row-price">Tk {Number(item.per_book_total).toFixed(2)}</span>
+                    {lowStock && <div className="cart-stock-warning">Only {availableStock} left in stock</div>}
+                  </div>
+                  <div className="row-controls">
+                    <button disabled={item.quantity <= 0} onClick={() => onUpdateQty(item.book_id, item.quantity - 1)}>-</button>
+
+                    <input 
+                      type="number" 
+                      min="0"
+                      max={availableStock || undefined}
+                      className="qty-input-box"
+                      defaultValue={item.quantity}
+                      key={item.quantity}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (Number.isNaN(val)) {
+                          e.target.value = item.quantity;
+                          return;
+                        }
+
+                        if (val === 0) {
+                          if (typeof onRemoveItem === 'function') {
+                            onRemoveItem(item.book_id);
+                          } else {
+                            onUpdateQty(item.book_id, 0);
+                          }
+                          return;
+                        }
+
+                        if (val > availableStock) {
+                          const message = `Only ${availableStock} copies available for "${item.title}".`;
+                          if (showToast) showToast(message);
+                          e.target.value = item.quantity;
+                          return;
+                        }
+
+                        onUpdateQty(item.book_id, val);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.target.blur();
+                        }
+                      }}
+                    />
+
+                    <button
+                      disabled={!canAddMore}
+                      onClick={() => {
+                        if (!canAddMore) {
+                          if (showToast) showToast(`Only ${availableStock} copies available for "${item.title}".`);
+                          return;
+                        }
+                        onUpdateQty(item.book_id, item.quantity + 1);
+                      }}
+                      title={canAddMore ? 'Add more' : `Max available: ${availableStock}`}
+                    >
+                      +
+                    </button>
+
+                    <button className="btn-remove" onClick={() => onRemoveItem(item.book_id)}>🗑️</button>
+                  </div>
                 </div>
-                <div className="row-controls">
-  {/* Minus Button */}
-  <button onClick={() => onUpdateQty(item.book_id, item.quantity - 1)}>-</button>
-
-  {/* Manually Typable Quantity Input */}
-<input 
-  type="number" 
-  min="0"
-  className="qty-input-box"
-  defaultValue={item.quantity}
-  key={item.quantity} // Automatically updates when clicking + or -
-  onBlur={(e) => {
-    const val = parseInt(e.target.value, 10);
-    
-    if (!isNaN(val)) {
-      if (val === 0) {
-        // Typing 0 deletes the book from the cart
-        if (typeof onRemoveItem === 'function') {
-          onRemoveItem(item.book_id);
-        } else {
-          onUpdateQty(item.book_id, 0); // Backend deletes when qty <= 0
-        }
-      } else if (val > 0) {
-        // Updates to the positive number
-        onUpdateQty(item.book_id, val);
-      }
-    } else {
-      e.target.value = item.quantity; // Reverts back if left completely blank
-    }
-  }}
-  onKeyDown={(e) => {
-    if (e.key === 'Enter') {
-      e.target.blur(); // Triggers onBlur immediately when pressing Enter
-    }
-  }}
-/>
-
-  {/* Plus Button */}
-  <button onClick={() => onUpdateQty(item.book_id, item.quantity + 1)}>+</button>
-
-  {/* Trash Remove Button */}
-  <button className="btn-remove" onClick={() => onRemoveItem(item.book_id)}>🗑️</button>
-</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

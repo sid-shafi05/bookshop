@@ -24,6 +24,8 @@ app.use('/wishlist', require('./routes/wishlist'));
 app.use('/orders', require('./routes/orders'));
 app.use('/reviews', require('./routes/reviews'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin', require('./routes/adminreturns'));
+app.use('/admin/returns', require('./routes/adminreturns'));
 app.use('/notifications', require('./routes/notifications')); // NEW — was missing entirely
 app.use('/deliveryman', require('./routes/deliveryman'));      // NEW — file existed but was never mounted
 const path = require('path');

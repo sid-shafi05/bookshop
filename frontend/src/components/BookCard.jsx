@@ -35,6 +35,9 @@ export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetail
   const coverSrc = hasRealCover
     ? (book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`)
     : '';
+  const stockQty = Number(book.stock_quantity ?? 0);
+  const stockState = stockQty <= 0 ? 'out' : stockQty <= 5 ? 'low' : 'in';
+  const stockText = stockQty <= 0 ? 'Out of Stock' : stockQty <= 5 ? `Only ${stockQty} left` : 'In Stock';
 
   return (
     <div className="book-card book-card-sm" onClick={() => onOpenDetails(book.book_id)} role="button" tabIndex={0}>
@@ -65,17 +68,19 @@ export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetail
 
         <div className="price-row">
           <span className="price-tag">Tk {Number(book.price).toFixed(2)}</span>
-          <span className={`stock-indicator ${book.stock_quantity > 0 ? 'in-stock' : 'out-stock'}`}>
-            {book.stock_quantity > 0 ? 'In Stock' : 'Out of Stock'}
+          <span className={`stock-indicator ${stockState === 'in' ? 'in-stock' : stockState === 'low' ? 'low-stock' : 'out-stock'}`}>
+            {stockText}
           </span>
         </div>
 
+        {stockState === 'low' && <div className="stock-warning">Low stock — add soon</div>}
+
         <button
           className="cart-action-btn"
-          disabled={book.stock_quantity <= 0}
+          disabled={stockQty <= 0}
           onClick={(event) => { event.stopPropagation(); onAddToCart(book.book_id); }}
         >
-          {book.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock'}
+          {stockQty > 0 ? 'Add to Cart' : 'Out of Stock'}
         </button>
       </div>
     </div>

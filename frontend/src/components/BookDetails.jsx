@@ -58,6 +58,9 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
   const coverSrc = hasCover
     ? (book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`)
     : '';
+  const stockQty = Number(book.stock_quantity ?? 0);
+  const stockState = stockQty <= 0 ? 'out' : stockQty <= 5 ? 'low' : 'in';
+  const stockText = stockQty <= 0 ? 'Out of Stock' : stockQty <= 5 ? `Only ${stockQty} left in stock` : `${stockQty} in stock`;
 
   return (
     <main className="book-details-page">
@@ -99,9 +102,13 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
           <p>ISBN: {book.isbn || 'Not provided'}</p>
           {book.publication_year && <p>Published: {book.publication_year}</p>}
           <div className="book-details-price">Tk {Number(book.price).toFixed(2)}</div>
+          <div className={`stock-indicator ${stockState === 'in' ? 'in-stock' : stockState === 'low' ? 'low-stock' : 'out-stock'}`}>
+            {stockText}
+          </div>
+          {stockState === 'low' && <div className="stock-warning">Low stock — add soon before it sells out</div>}
           <div className="book-details-actions">
-            <button className="cart-action-btn" disabled={book.stock_quantity <= 0} onClick={() => onAddToCart(book.book_id)}>
-              {book.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock'}
+            <button className="cart-action-btn" disabled={stockQty <= 0} onClick={() => onAddToCart(book.book_id)}>
+              {stockQty > 0 ? 'Add to Cart' : 'Out of Stock'}
             </button>
             <button className="details-wishlist-btn" onClick={() => onAddToWishlist(book)}>Save to Wishlist</button>
           </div>
