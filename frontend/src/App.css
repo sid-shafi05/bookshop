@@ -324,6 +324,28 @@ a {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
+/* -sm variants used in carousels/home rows */
+.book-card-sm {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cover-wrapper-sm {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.book-meta-sm {
+  padding: 10px 2px 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 /* Book cover */
 .cover-wrapper {
   height: 225px;
@@ -363,9 +385,17 @@ a {
   border-radius: 50%;
   cursor: pointer;
   font-size: 0.9rem;
+  color: #1a2e40;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
+}
+
+.wishlist-float-btn:hover {
+  background: #ffffff;
+  color: #c53030;
 }
 
 /* Book information */
@@ -2188,8 +2218,7 @@ a {
 
 .book-carousel-item img {
   width: 100%;
-  height: auto;
-  max-height: 60%;
+  height: 100%;
   object-fit: cover;
   display: block;
 }
