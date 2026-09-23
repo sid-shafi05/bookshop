@@ -167,6 +167,10 @@ export default function App() {
     try {
       if (isLoginMode) {
         const res = await api.login({ email: authForm.email, password: authForm.password });
+        if (res.token) {
+          sessionStorage.setItem('bookstore_token', res.token);
+          localStorage.setItem('bookstore_token', res.token);
+        }
         setUser(res.user);
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
         showToast(`Welcome back, ${res.user.username}!`);
@@ -176,6 +180,10 @@ export default function App() {
       } else {
         const res = await api.signup(authForm);
         const registeredUser = res.user || { id: res.user_id, username: res.username, email: res.email, role: res.role };
+        if (res.token) {
+          sessionStorage.setItem('bookstore_token', res.token);
+          localStorage.setItem('bookstore_token', res.token);
+        }
         setUser(registeredUser);
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(registeredUser));
         showToast('Account registered successfully!');
@@ -201,8 +209,10 @@ const handleSignOut = async () => {
     // 1. Clear all persistent client data
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('bookstore_token');
     localStorage.clear();
     sessionStorage.removeItem(AUTH_USER_KEY);
+    sessionStorage.removeItem('bookstore_token');
     sessionStorage.clear();
 
     // 2. Clear state and redirect
@@ -375,9 +385,14 @@ const handleSignOut = async () => {
             isOpen={showCart}
             onClose={() => setShowCart(false)}
             cart={cart}
+            showToast={showToast}
             onUpdateQty={async (bid, qty) => {
-              await api.updateCartQuantity({ customer_id: user.id, book_id: bid, updated_qty: qty });
-              refreshCart(user.id);
+              try {
+                await api.updateCartQuantity({ customer_id: user.id, book_id: bid, updated_qty: qty });
+                refreshCart(user.id);
+              } catch (err) {
+                showToast(err.message || 'Unable to update quantity');
+              }
             }}
             onRemoveItem={async (bid) => {
               await api.removeFromCart({ customer_id: user.id, book_id: bid });

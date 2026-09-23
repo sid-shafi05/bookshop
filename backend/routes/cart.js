@@ -40,7 +40,7 @@ router.get('/:customer_id', async (req, res) => {
 
     try {
         const query =
-            ` SELECT b.book_id,b.title,b.cover_url,b.price,ci.quantity,(b.price*ci.quantity) AS per_book_total,
+            ` SELECT b.book_id,b.title,b.cover_url,b.price,b.stock_quantity,ci.quantity,(b.price*ci.quantity) AS per_book_total,
                             COALESCE(STRING_AGG(a.name,', '), 'Various Authors') AS author_names
         FROM carts c  
         join cart_items ci ON c.cart_id=ci.cart_id 
@@ -48,18 +48,24 @@ router.get('/:customer_id', async (req, res) => {
         LEFT JOIN book_authors ba on ba.book_id=b.book_id 
         LEFT JOIN authors a on a.author_id=ba.author_id
         where c.customer_id=$1
-        GROUP BY b.book_id, b.title, b.cover_url, ci.quantity, b.price
+        GROUP BY b.book_id, b.title, b.cover_url, ci.quantity, b.price, b.stock_quantity
         order by b.book_id ASC;
          `;
 
         const result = await pool.query(query, [customer_id]);
+        const items = result.rows.map((book) => ({
+            ...book,
+            stock_quantity: Number(book.stock_quantity ?? 0),
+            quantity: Number(book.quantity ?? 0),
+            per_book_total: Number(book.per_book_total ?? 0),
+        }));
 
         let subtotal = 0;
-        for (let book of result.rows) {
+        for (let book of items) {
             subtotal = subtotal + Number(book.per_book_total);
         }
 
-        res.json({ items: result.rows, total_items: result.rows.length, cart_subtotal: subtotal.toFixed(2) });
+        res.json({ items, total_items: items.length, cart_subtotal: subtotal.toFixed(2) });
     } catch (err) {
         console.error('Error fetching cart:', err.message);
         res.status(500).json({ error: 'Internal Server Error' });

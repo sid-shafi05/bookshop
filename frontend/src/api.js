@@ -1,13 +1,24 @@
 // frontend/src/api.js
 const API_URL = 'http://localhost:3000';
 
+function getStoredToken() {
+  return sessionStorage.getItem('bookstore_token') || localStorage.getItem('bookstore_token') || '';
+}
+
 async function request(path, options = {}) {
+  const token = getStoredToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   });
 
@@ -54,9 +65,9 @@ export const api = {
   updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
 
   // Returns
-  requestReturn: (orderId, reason) => request(`/orders/${orderId}/return`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  requestReturn: (orderId, orderItemIds, reason) => request(`/orders/${orderId}/return`, { method: 'POST', body: JSON.stringify({ order_item_ids: orderItemIds, reason }) }),
   getAdminReturns: () => request('/admin/returns'),
-  resolveReturn: (returnId, decision) => request(`/admin/returns/${returnId}`, { method: 'PUT', body: JSON.stringify({ decision }) }),
+  resolveReturn: (returnId, decision, condition) => request(`/admin/returns/${returnId}`, { method: 'PUT', body: JSON.stringify({ decision, condition }) }),
 
   // Delivery assignment (admin)
   getDeliverymen: () => request('/admin/deliverymen'),

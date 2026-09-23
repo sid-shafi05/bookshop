@@ -4,6 +4,7 @@ const router = express.Router();
 const pool = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { notify, notifyAdmins } = require('../utils/notify');
+const { hasActiveOrderReturn } = require('../utils/returnState');
 
 router.use(verifyToken);
 
@@ -225,15 +226,138 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    // Check if order is eligible for returns (delivered within 10 days)
+    let canReturn = false;
+    if (order.status === 'delivered') {
+      const delivery = deliveryRes.rows[0];
+      if (delivery && delivery.delivery_date) {
+        const daysSinceDelivery = (Date.now() - new Date(delivery.delivery_date).getTime()) / (1000 * 60 * 60 * 24);
+        canReturn = daysSinceDelivery <= 10;
+      }
+    }
+
+    // Get return requests for this order
+    const returnsRes = await pool.query(
+      `SELECT r.return_id, r.order_item_id, r.reason, r.status, r.refund_amount, r.condition, r.requested_at, r.resolved_at
+       FROM returns r
+       WHERE r.order_id = $1
+       ORDER BY r.requested_at DESC`,
+      [id]
+    );
+    const activeOrderReturn = hasActiveOrderReturn(returnsRes.rows);
+    const canReturnRequest = order.status === 'delivered' && !activeOrderReturn && canReturn;
+
     res.json({
       order,
       items: itemsRes.rows,
       delivery: deliveryRes.rows[0] || null,
-      can_review: order.status === 'delivered'
+      can_review: order.status === 'delivered',
+      can_return: canReturnRequest,
+      return_requests: returnsRes.rows
     });
   } catch (err) {
     console.error('Error fetching order detail:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ====================================================================
+// POST /orders/:id/return -> customer requests return for items in a delivered order
+// Body: { order_item_ids: [int], reason: string }
+// ====================================================================
+router.post('/:id/return', async (req, res) => {
+  const { id } = req.params;
+  const { order_item_ids, reason } = req.body;
+
+  if (!Array.isArray(order_item_ids) || order_item_ids.length === 0) {
+    return res.status(400).json({ error: 'At least one item must be selected for return' });
+  }
+  const reasonText = typeof reason === 'string' ? reason.trim() : '';
+  if (!reasonText) {
+    return res.status(400).json({ error: 'A return reason is required' });
+  }
+
+  const ownership = await verifyOrderOwnership(id, req.userId);
+  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+  if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
+
+  const orderRes = await pool.query('SELECT * FROM orders WHERE order_id = $1', [id]);
+  const order = orderRes.rows[0];
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (order.status !== 'delivered') {
+    return res.status(400).json({ error: 'Returns are only allowed for delivered orders' });
+  }
+
+  // Check 10-day return window from delivery date
+  const deliveryRes = await pool.query(
+    'SELECT delivery_date FROM deliveries WHERE order_id = $1 AND status = $2',
+    [id, 'delivered']
+  );
+  const delivery = deliveryRes.rows[0];
+  if (!delivery || !delivery.delivery_date) {
+    return res.status(400).json({ error: 'Order not yet delivered' });
+  }
+  const daysSinceDelivery = (Date.now() - new Date(delivery.delivery_date).getTime()) / (1000 * 60 * 60 * 24);
+  if (daysSinceDelivery > 10) {
+    return res.status(400).json({ error: 'Return window expired (10 days after delivery)' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify all items belong to this order and don't have existing returns
+    const itemsRes = await client.query(
+      `SELECT oi.order_item_id, oi.book_id, oi.quantity, oi.unit_price, b.title
+       FROM order_items oi
+       JOIN books b ON b.book_id = oi.book_id
+       WHERE oi.order_id = $1 AND oi.order_item_id = ANY($2)`,
+      [id, order_item_ids]
+    );
+    if (itemsRes.rows.length !== order_item_ids.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'One or more items do not belong to this order' });
+    }
+
+    // One return request per order only; once a request is active, the order is locked.
+    const existingRes = await client.query(
+      `SELECT return_id FROM returns WHERE order_id = $1 AND status != 'rejected' LIMIT 1`,
+      [id]
+    );
+    if (existingRes.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A return request already exists for this order' });
+    }
+
+    // Insert return requests (one per item, same reason)
+    const returnIds = [];
+    for (const item of itemsRes.rows) {
+      const refundAmount = Number(item.unit_price) * item.quantity;
+      const retRes = await client.query(
+        `INSERT INTO returns (order_id, order_item_id, customer_id, reason, status, refund_amount, condition)
+         VALUES ($1, $2, $3, $4, 'requested', $5, NULL)
+         RETURNING return_id`,
+        [id, item.order_item_id, req.userId, reasonText, refundAmount]
+      );
+      returnIds.push(retRes.rows[0].return_id);
+    }
+
+    await notifyAdmins({
+      text: `Return request for Order #${id} (${order_item_ids.length} items): ${reasonText}`,
+      topic: 'return',
+      referenceType: 'order',
+      referenceId: Number(id),
+      client
+    });
+
+    await client.query('COMMIT');
+    res.status(201).json({ return_ids: returnIds, message: 'Return request submitted' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Create return request error:', err.message);
+    res.status(500).json({ error: 'Failed to submit return request' });
+  } finally {
+    client.release();
   }
 });
 
