@@ -48,7 +48,7 @@ export default function WishlistDrawer({
   return (
     <div className="wishlist-page-overlay" onClick={onClose}>
       <div className="wishlist-view-card" onClick={(e) => e.stopPropagation()}>
-        
+
         {/* LEFT SIDEBAR */}
         <aside className="wishlist-sidebar">
           <div className="sidebar-group">
@@ -57,10 +57,10 @@ export default function WishlistDrawer({
 
           <div className="sidebar-group active-group">
             <h4 className="sidebar-heading text-blue">Your Wishlists</h4>
-            
+
             <div className="wishlist-links-list">
               {wishlists.map((w) => (
-                <div 
+                <div
                   key={w.wishlist_id}
                   className={`wishlist-link-item ${Number(selectedWishlistId) === w.wishlist_id ? 'active' : ''}`}
                   onClick={() => {
@@ -80,9 +80,9 @@ export default function WishlistDrawer({
               </button>
             ) : (
               <form onSubmit={handleCreateSubmit} className="sidebar-create-form">
-                <input 
-                  type="text" 
-                  placeholder="Wishlist Name" 
+                <input
+                  type="text"
+                  placeholder="Wishlist Name"
                   autoFocus
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
@@ -110,8 +110,8 @@ export default function WishlistDrawer({
             <div>
               {isEditing ? (
                 <form onSubmit={handleRenameSubmit} className="inline-rename-form">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     autoFocus
@@ -128,32 +128,31 @@ export default function WishlistDrawer({
               <div className="wishlist-sub-actions">
                 {!isDefault && (
                   <>
-                  <button
-                    className="action-link"
-                    onClick={() => {
-                      setEditName(activeWishlist.wishlist_name || '');
-                      setIsEditing(true);
-                    }}
-                  >
-        Edit
-      </button>
-      <span className="dot">•</span>
-      
-      {/* Updated Delete Button */}
-      <button 
-        className="action-link text-red" 
-        onClick={() => {
-          if (activeWishlist && activeWishlist.wishlist_id) {
-            onDeleteList(activeWishlist.wishlist_id);
-          }
-        }}
-      >
-        Delete
-      </button>
-      
-      <span className="dot">•</span>
-    </>
-  )}
+                    <button
+                      className="action-link"
+                      onClick={() => {
+                        setEditName(activeWishlist.wishlist_name || '');
+                        setIsEditing(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <span className="dot">•</span>
+
+                    <button
+                      className="action-link text-red"
+                      onClick={() => {
+                        if (activeWishlist && activeWishlist.wishlist_id) {
+                          onDeleteList(activeWishlist.wishlist_id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+
+                    <span className="dot">•</span>
+                  </>
+                )}
                 <button className="action-link" onClick={() => alert('Share link copied')}>
                   Share This Wishlist
                 </button>
@@ -174,26 +173,38 @@ export default function WishlistDrawer({
                 <p>No books in this wishlist yet.</p>
               </div>
             ) : (
-              <div className="wishlist-grid">
+              <div className="book-grid">
                 {books.map((b) => (
-                  <div key={b.book_id} className="wishlist-book-card">
-                    <div className="card-cover-container">
+                  <div key={b.book_id} className="book-card">
+                    <div className="cover-wrapper">
                       <span className="discount-tag">Save 20%</span>
-                      <div className="cover-box">
-                        <span>📖 {b.title}</span>
-                      </div>
+                      {b.cover_url ? (
+                        <img
+                          className="book-cover-photo"
+                          src={b.cover_url.startsWith('http') ? b.cover_url : `http://localhost:3000${b.cover_url}`}
+                          alt={b.title}
+                        />
+                      ) : (
+                        <div className="book-cover-art">{b.title}</div>
+                      )}
                     </div>
 
-                    <div className="card-details">
-                      <h4 className="book-name">{b.title}</h4>
-                      <p className="book-author-line">by {b.author_names || 'Various Authors'}</p>
-                      <p className="book-price-line">Tk {Number(b.price).toFixed(2)}</p>
+                    <div className="book-meta">
+                      <p className="title-text">{b.title}</p>
+                      <p className="author-text">by {b.author_names || 'Various Authors'}</p>
 
-                      <div className="card-btn-group">
-                        <button className="btn-card-cart" onClick={() => onAddToCart(b.book_id)}>
+                      <div className="price-row">
+                        <span className="price-tag">Tk {Number(b.price).toFixed(2)}</span>
+                      </div>
+
+                      <div className="wishlist-card-actions">
+                        <button className="cart-action-btn" onClick={() => onAddToCart(b.book_id)}>
                           Add to Cart
                         </button>
-                        <button className="btn-card-remove" onClick={() => onRemoveItem(activeWishlist.wishlist_id, b.book_id)}>
+                        <button
+                          className="btn-card-remove"
+                          onClick={() => onRemoveItem(activeWishlist.wishlist_id, b.book_id)}
+                        >
                           Remove
                         </button>
                       </div>

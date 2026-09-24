@@ -45,20 +45,26 @@ export default function PublisherDetail() {
 
       <section className="directory-results">
         <h3>Books from {publisher.name}</h3>
-        <div className="directory-grid">
+        <div className="book-grid">
           {books.map((book) => (
-            <Link key={book.book_id} to={`/books/${book.book_id}`} className="directory-card">
-              <div className="directory-image-wrap small">
+            <Link key={book.book_id} to={`/books/${book.book_id}`} className="book-card">
+              <div className="cover-wrapper">
                 {book.cover_url ? (
-                  <img src={book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`} alt={book.title} />
+                  <img
+                    className="book-cover-photo"
+                    src={book.cover_url.startsWith('http') ? book.cover_url : `http://localhost:3000${book.cover_url}`}
+                    alt={book.title}
+                  />
                 ) : (
-                  <div className="directory-placeholder small">📖</div>
+                  <div className="book-cover-art">{book.title}</div>
                 )}
               </div>
-              <div className="directory-card-body">
-                <h3>{book.title}</h3>
-                <p>{book.publisher_name || 'Independent Publisher'}</p>
-                <small>Tk {Number(book.price).toFixed(2)}</small>
+              <div className="book-meta">
+                <p className="title-text">{book.title}</p>
+                <p className="author-text">{book.publisher_name || 'Independent Publisher'}</p>
+                <div className="price-row">
+                  <span className="price-tag">Tk {Number(book.price).toFixed(2)}</span>
+                </div>
               </div>
             </Link>
           ))}

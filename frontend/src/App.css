@@ -11,6 +11,82 @@
   padding: 0;
 }
 
+/* FIX ATTEMPT #2: if color-scheme: light alone didn't fix invisible
+   text in selects/inputs, something else in the cascade — a different
+   stylesheet, a UI framework reset, or higher specificity elsewhere —
+   is winning and setting color to something invisible. !important here
+   forces this rule to win regardless of source order or specificity
+   elsewhere, and -webkit-text-fill-color is set because Safari/Chrome
+   sometimes read that instead of color for form controls (this is also
+   the usual cause of "text only appears on :hover/:focus" — a competing
+   rule is normally winning, and hover/focus states happen to override
+   it back). If text is STILL invisible after this, the override is
+   coming from an even more specific selector or an !important rule
+   elsewhere — check DevTools > Computed > color to find it. */
+html {
+  color-scheme: light;
+}
+
+select,
+option,
+input,
+textarea {
+  color: #2b2b2b !important;
+  -webkit-text-fill-color: #2b2b2b !important;
+  opacity: 1 !important;
+}
+
+.search-container input,
+.all-books-actions select,
+.sort-box select {
+  background-color: #ffffff !important;
+  color: #2b2b2b !important;
+  -webkit-text-fill-color: #2b2b2b !important;
+}
+
+/* FIX #3: buttons with no background color (background: none) never had
+   an explicit color set either, so they fell back to the browser's
+   default system text color for <button> — which, under forced-dark
+   rendering, can be invisible on a light page even though the rest of
+   this stylesheet is explicit everywhere else. Buttons WITH a colored
+   background (cart-action-btn, hero-button, etc.) were never affected,
+   since they already declare their own color. This is the same root
+   cause as the dropdown/arrow bugs, just on different elements.
+
+   Low-specificity fallback first: catches any plain <button> that
+   doesn't already have its own class rule. Class selectors below (and
+   anywhere else in this file) have higher specificity and win over
+   this automatically, so it can't override an intentionally-colored
+   button — it only fills the gap where nothing else applies. */
+button {
+  color: #2b2b2b;
+}
+
+.close-x {
+  color: #2b2b2b;
+}
+
+.row-controls button {
+  color: #1a2e40;
+  font-weight: 700;
+}
+
+.btn-remove {
+  color: #8c827a;
+}
+
+.btn-remove:hover {
+  color: #c53030;
+}
+
+.clear-filter-btn {
+  color: #1a2e40;
+}
+
+.btn-cancel-sm {
+  color: #555555;
+}
+
 body {
   background-color: #faf9f6;
   color: #2b2b2b;
@@ -87,7 +163,7 @@ body {
 .nav-controls {
   display: flex;
   align-items: center;
-  gap: 1.2rem;
+  gap: 1.4rem;
 }
 
 .nav-icon-btn {
@@ -1136,19 +1212,30 @@ a {
   gap: 1.5rem;
 }
 
+/* Wishlist cards now reuse the same navy/cream design language as
+   .book-card on the homepage/catalog — same cover height and tint, same
+   placeholder gradient, same typography colors, same hover lift, and
+   the same navy "Add to cart" treatment instead of the old blue accent.
+   This used to be a separate, hand-built look; now it's the same card. */
 .wishlist-book-card {
-  background: white;
-  border: 1px solid #eae7e0;
-  border-radius: 4px;
+  background: #ffffff;
+  border: none;
+  border-radius: 2px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.wishlist-book-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
 .card-cover-container {
-  height: 200px;
+  height: 225px;
   position: relative;
-  background: #e2e8f0;
+  background-color: #f0eee9;
+  overflow: hidden;
 }
 .discount-tag {
   position: absolute;
@@ -1172,34 +1259,38 @@ a {
   text-align: center;
   font-family: 'Georgia', serif;
   font-weight: bold;
+  color: #1a2e40;
+  background: linear-gradient(135deg, #eaddc7 0%, #c7b299 100%);
 }
 .cover-box img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .card-details {
-  padding: 1rem;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
   flex: 1;
 }
 .book-name {
   font-family: 'Georgia', serif;
-  font-size: 0.95rem;
-  color: #0f172a;
-  margin-bottom: 2px;
+  font-size: 0.92rem;
+  color: #1a2e40;
+  line-height: 1.25;
+  margin-bottom: 3px;
 }
 .book-author-line {
-  font-size: 0.75rem;
-  color: #64748b;
-  margin-bottom: 6px;
+  font-size: 0.74rem;
+  color: #666666;
+  margin-bottom: 5px;
 }
 .book-price-line {
-  font-size: 1rem;
-  font-weight: bold;
-  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a2e40;
   margin-bottom: 10px;
 }
 
@@ -1210,23 +1301,31 @@ a {
   margin-top: auto;
 }
 .btn-card-cart {
-  background-color: #0284c7;
+  background-color: #1a2e40;
   color: white;
   border: none;
-  padding: 7px;
-  border-radius: 3px;
-  font-size: 0.75rem;
+  padding: 7px 8px;
+  border-radius: 2px;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.2s;
+}
+.btn-card-cart:hover {
+  background-color: #2b4c6f;
 }
 .btn-card-remove {
   background: none;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #c9c5be;
   padding: 5px;
-  border-radius: 3px;
-  font-size: 0.75rem;
+  border-radius: 2px;
+  font-size: 0.72rem;
   cursor: pointer;
-  color: #64748b;
+  color: #555555;
+}
+.btn-card-remove:hover {
+  color: #c53030;
+  border-color: #c53030;
 }
 
 .inline-rename-form {
@@ -2196,59 +2295,46 @@ a {
 }
 
 
-/* ================= SEARCH ================= */
-
-.all-books-search {
-  display: flex;
-
-  gap: 8px;
-
-  margin-bottom: 24px;
-}
-
-.all-books-search input {
-  flex: 1;
-
-  min-width: 0;
-
-  padding: 11px 13px;
-
-  border:
-    1px solid #ddd8cf;
-
-  border-radius: 3px;
-
-  background: #fff;
-}
-
-.all-books-search button {
-  padding: 0 15px;
-
-  border:
-    1px solid #ddd8cf;
-
-  background: #fff;
-
-  border-radius: 3px;
-
-  cursor: pointer;
-}
-
-
 /* ================= NAV BOOKS BUTTON ================= */
+/* Books / Authors / Publishers links in the navbar.
+   Underline sweeps in on hover, uppercase + letter-spacing to match
+   .hero-eyebrow / .section-kicker elsewhere on the site, so it reads
+   as an intentional nav treatment rather than a bare text button. */
 
 .nav-books-btn {
+  position: relative;
   border: none;
-
   background: transparent;
-
-  padding: 8px 12px;
-
-  font-weight: 600;
-
+  padding: 8px 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: #1a2e40;
-
   cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.nav-books-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background-color: #1a2e40;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.25s ease;
+}
+
+.nav-books-btn:hover {
+  color: #2b4c6f;
+}
+
+.nav-books-btn:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
 }
 
 
@@ -2352,9 +2438,10 @@ a {
   display: flex;
   gap: 16px;
   overflow-x: auto;
+  overflow-y: visible;
   scroll-behavior: smooth;
   scrollbar-width: none;
-  padding: 4px 2px;
+  padding: 4px 2px 8px;
   align-items: stretch;
 }
 
@@ -2362,12 +2449,24 @@ a {
   display: none;
 }
 
+/*
+  FIX: this card was previously pinned to a hard 340px height with
+  overflow: hidden, which clipped off the bottom of every card — usually
+  right through the "Add to cart" button. A 200px-wide cover at the 2:3
+  ratio used by .cover-wrapper-sm is already 300px tall on its own, so
+  340px never had room left for genre label + title + author + rating +
+  price + button underneath it.
+
+  Fix: let the card size itself by its content (min-height as a floor,
+  not a ceiling) and drop overflow: hidden. .book-carousel-track already
+  has align-items: stretch, so every card in a row still lines up to the
+  height of the tallest card — we just stop force-cropping them.
+*/
 .book-carousel-item {
   flex: 0 0 200px;
   width: 200px;
-  height: 340px;
+  min-height: 440px;
   display: flex;
-  overflow: hidden;      /* prevents oversized children from blowing out the box */
 }
 
 .book-carousel-item > * {
@@ -2375,7 +2474,6 @@ a {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .book-carousel-item img {
@@ -2393,12 +2491,43 @@ a {
   border: 1px solid #ddd;
   background: #fff;
   cursor: pointer;
-  font-size: 18px;
   z-index: 2;
+
+  /* FIX: the arrow glyph/icon was invisible — no color was ever set, and
+     nothing centered it inside the circle, so a text arrow could inherit
+     an invisible color and/or sit off-center, and an SVG icon (e.g. a
+     lucide-react ChevronLeft/ChevronRight) had no explicit stroke color
+     or size. This covers both cases. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  color: #1a2e40;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .carousel-arrow:hover {
   background: #f5f5f5;
+}
+
+.carousel-arrow:disabled {
+  color: #c9c5be;
+  border-color: #ececec;
+  cursor: not-allowed;
+}
+
+/* If the arrow is rendered as an SVG icon (e.g. lucide-react's
+   ChevronLeft/ChevronRight) rather than a text character, make sure it
+   picks up the button's color and has an explicit visible size —
+   otherwise it can render at 0 stroke color or the wrong dimensions. */
+.carousel-arrow svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  display: block;
 }
 
 
@@ -2711,3 +2840,178 @@ a {
   }
 }
 
+/* =========================================================
+   AUTHOR DIRECTORY — compact grid, same rhythm as .book-grid
+   ========================================================= */
+
+.author-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 24px 18px;
+}
+
+.author-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 2px;
+  padding: 18px 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.author-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.author-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: #dfe3e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* FB/Instagram-style default profile silhouette */
+.author-avatar-placeholder {
+  width: 68%;
+  height: 68%;
+  fill: #b0b6bd;
+  transform: translateY(8%);
+}
+
+.author-card-body h3 {
+  font-family: 'Georgia', serif;
+  font-size: 0.92rem;
+  color: #1a2e40;
+  margin-bottom: 3px;
+  line-height: 1.25;
+}
+
+.author-card-body p {
+  font-size: 0.74rem;
+  color: #666666;
+  margin-bottom: 4px;
+}
+
+.author-card-body small {
+  font-size: 0.68rem;
+  color: #8c827a;
+}
+
+/* =========================================================
+   PAGINATION
+   ========================================================= */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.page-nav-btn {
+  background: #ffffff;
+  border: 1px solid #c9c5be;
+  color: #1a2e40;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.page-nav-btn:hover:not(:disabled) {
+  background-color: #1a2e40;
+  color: #ffffff;
+  border-color: #1a2e40;
+}
+
+.page-nav-btn:disabled {
+  background-color: #f5f4f1;
+  color: #b8b2a8;
+  border-color: #e8e6e1;
+  cursor: not-allowed;
+}
+
+.page-num-btn {
+  background: #ffffff;
+  border: 1px solid #e8e6e1;
+  color: #1a2e40;
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.page-num-btn:hover {
+  border-color: #1a2e40;
+  background-color: #f7f6f2;
+}
+
+.page-num-btn.active {
+  background-color: #1a2e40;
+  color: #ffffff;
+  border-color: #1a2e40;
+  cursor: default;
+}
+
+.page-dots {
+  color: #8c827a;
+  font-size: 0.85rem;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.wishlist-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sidebar-create-form input,
+.inline-rename-form input {
+  background-color: #ffffff !important;
+  color: #2b2b2b !important;
+}
+
+input,
+textarea,
+select {
+  color: #1f1a17;            /* dark text */
+  background-color: #ffffff; /* light field */
+  caret-color: #1f1a17;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8c827a;
+}
+
+/* Browser autofill also recolors fields */
+input:-webkit-autofill {
+  -webkit-text-fill-color: #1f1a17;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+}

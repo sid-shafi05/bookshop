@@ -31,10 +31,16 @@ async function request(path, options = {}) {
 }
 
 async function requestFormData(path, formData, method = 'POST') {
+  const token = getStoredToken();
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     method,
     credentials: 'include',
-    headers: {},
+    headers,
     body: formData,
   });
 

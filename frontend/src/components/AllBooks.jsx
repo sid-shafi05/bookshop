@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import BookCard from './BookCard';
@@ -28,6 +27,15 @@ export default function AllBooks({
   });
 
   const limit = 12;
+
+  // Drives the heading below — "All Books" when nothing (or "All") is
+  // selected, otherwise the category name itself.
+  const isFiltered = Boolean(selectedCategory) && selectedCategory !== 'All';
+  const headingText = isFiltered ? selectedCategory : 'All Books';
+  const kickerText = isFiltered ? 'BROWSING' : 'OUR COLLECTION';
+  const subtitleText = isFiltered
+    ? `${pagination.total} books in ${selectedCategory}`
+    : `${pagination.total} books in our collection`;
 
 
   /*
@@ -113,7 +121,9 @@ export default function AllBooks({
 
 
   /*
-    Search.
+    Search. Driven by the shared searchQuery state (same state the navbar
+    search box controls) — there's no separate local search input on this
+    page anymore, so this still applies whatever the person typed up top.
   */
   let displayedBooks = [...books];
 
@@ -183,15 +193,15 @@ export default function AllBooks({
         <div>
 
           <span className="section-kicker">
-            OUR COLLECTION
+            {kickerText}
           </span>
 
           <h2>
-            All Books
+            {headingText}
           </h2>
 
           <p>
-            {pagination.total} books in our collection
+            {subtitleText}
           </p>
 
         </div>
@@ -242,32 +252,6 @@ export default function AllBooks({
           </select>
 
         </div>
-
-      </div>
-
-
-      {/* ================= SEARCH ================= */}
-
-      <div className="all-books-search">
-
-        <input
-          type="text"
-          value={searchQuery}
-          placeholder="Search this collection..."
-          onChange={(e) =>
-            setSearchQuery(e.target.value)
-          }
-        />
-
-        {searchQuery && (
-
-          <button
-            onClick={() => setSearchQuery('')}
-          >
-            Clear
-          </button>
-
-        )}
 
       </div>
 
