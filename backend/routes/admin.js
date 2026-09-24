@@ -3,6 +3,7 @@ const router= express.Router();
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const pool = require('../db');
+const supabase = require('../config/supabase');
 
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -320,7 +321,33 @@ router.put('/books/:id', upload.single('cover_image'), async (req, res) => {
     const price = Number(req.body.price);
     const stock_quantity = Number(req.body.stock_quantity);
     const publication_year = req.body.publication_year ? Number(req.body.publication_year) : null;
-    const cover_url = req.file ? `/images/books/${req.file.filename}` : (req.body.existing_cover_url || null);
+    let cover_url = req.body.existing_cover_url || null;
+
+if (req.file) {
+  const ext = req.file.originalname.split('.').pop().toLowerCase();
+  const fileName = `book-${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+  const filePath = `books/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('book-covers')
+    .upload(filePath, req.file.buffer, {
+      contentType: req.file.mimetype,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage upload failed:', uploadError);
+    return res.status(500).json({
+      error: 'Failed to upload book cover',
+    });
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from('book-covers')
+    .getPublicUrl(filePath);
+
+  cover_url = publicUrlData.publicUrl;
+}
 
     try {
         const result = await pool.query(
