@@ -76,10 +76,10 @@ export const api = {
   updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
 
   // Returns
-  requestReturn: (orderId, reason, itemIds) => request(`/orders/${orderId}/return`, {
-    method: 'POST',
-    body: JSON.stringify({ reason, item_ids: itemIds }),
-  }),
+requestReturn: (orderId, reason, itemIds) => request(`/orders/${orderId}/return`, {
+  method: 'POST',
+  body: JSON.stringify({ reason, order_item_ids: itemIds }),
+}),
   getAdminReturns: () => request('/admin/returns'),
   resolveReturn: (returnId, decision, condition) => request(`/admin/returns/${returnId}`, {
     method: 'PUT',

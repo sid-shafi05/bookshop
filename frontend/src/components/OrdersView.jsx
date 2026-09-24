@@ -8,7 +8,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(initialOrderId || null);
 
-  // Full detail (items/delivery/can_review/can_return) is fetched lazily per order,
+  // Full detail (items/delivery/can_review/can_return/return_requests) is fetched lazily per order,
   // since GET /orders/customer/:id only returns summary rows.
   const [detailCache, setDetailCache] = useState({}); // { [order_id]: { items, delivery, can_review, can_return, return_requests } }
   const [detailLoadingId, setDetailLoadingId] = useState(null);
@@ -21,9 +21,6 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [selectedReturnItemIds, setSelectedReturnItemIds] = useState([]);
   const [returnReason, setReturnReason] = useState('');
   const [submittingReturn, setSubmittingReturn] = useState(false);
-
-  // Track orders with pending return requests (local state for immediate UI update)
-  const [ordersWithPendingReturns, setOrdersWithPendingReturns] = useState(new Set());
 
   const highlightRef = useRef(null);
 
@@ -69,6 +66,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
               delivery: result.detail.delivery,
               can_review: result.detail.can_review,
               can_return: result.detail.can_return,
+              return_window_expired: result.detail.return_window_expired,
+              return_window_days: result.detail.return_window_days || 10,
               return_requests: result.detail.return_requests || [],
             };
           }
@@ -101,8 +100,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     }
   }, [initialOrderId, orders]);
 
-  const loadDetail = async (orderId) => {
-    if (detailCache[orderId]) return; // already fetched
+  const loadDetail = async (orderId, force = false) => {
+    if (detailCache[orderId] && !force) return; // already fetched
     setDetailLoadingId(orderId);
     try {
       const data = await api.getOrderDetail(orderId);
@@ -115,11 +114,11 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
           can_return: data.can_return,
           return_window_expired: data.return_window_expired,
           return_window_days: data.return_window_days || 10,
-          return_request: data.return_request,
+          return_requests: data.return_requests || [],
         },
       }));
     } catch (err) {
-      setDetailCache((prev) => ({ ...prev, [orderId]: { items: [], error: err.message } }));
+      setDetailCache((prev) => ({ ...prev, [orderId]: { items: [], return_requests: [], error: err.message } }));
     } finally {
       setDetailLoadingId(null);
     }
@@ -147,19 +146,19 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     setReviewForm({ rating: 5, comment: '' });
   };
 
-  // Return badge helpers
+  // Return badge helpers — all driven off detail.return_requests (array of return rows)
   const getReturnBadge = (order) => {
     const detail = detailCache[order.order_id];
     const requests = detail?.return_requests || [];
-    const hasAnyReturn = requests.length > 0 || ordersWithPendingReturns.has(order.order_id);
-    if (!hasAnyReturn) return null;
-    const statuses = requests.map(r => r.status);
-    const localPending = ordersWithPendingReturns.has(order.order_id);
-    if (localPending) return <span className="order-return-badge">Return Requested</span>;
-    if (statuses.includes('approved') || statuses.includes('rejected') || statuses.includes('processed')) {
-      return <span className="order-return-badge processed">Return Processed</span>;
-    }
-    return <span className="order-return-badge">Return Requested</span>;
+    if (requests.length === 0) return null;
+
+    const hasUnresolved = requests.some((r) => r.status === 'requested');
+    if (hasUnresolved) return <span className="order-return-badge">Return Requested</span>;
+
+    const hasResolved = requests.some((r) => ['approved', 'rejected', 'processed'].includes(r.status));
+    if (hasResolved) return <span className="order-return-badge processed">Return Processed</span>;
+
+    return null;
   };
 
   const getReturnEligibility = (order) => {
@@ -168,9 +167,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
       return { allowed: false, message: '' };
     }
 
-    const requests = detail?.return_requests || [];
-    const hasActiveReturn = requests.some((request) => ['requested', 'approved', 'processed'].includes(request?.status))
-      || ordersWithPendingReturns.has(order.order_id);
+    const requests = detail.return_requests || [];
+    const hasActiveReturn = requests.some((r) => r.status !== 'rejected');
 
     if (order.status !== 'delivered' || order.delivery_status !== 'delivered') {
       return { allowed: false, message: 'Returns are only available for delivered orders.' };
@@ -189,10 +187,13 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
 
   const canShowReturnButton = (order) => {
     const detail = detailCache[order.order_id];
-    const requests = detail?.return_requests || [];
-    const hasActiveReturn = requests.some((request) => ['requested', 'approved', 'processed'].includes(request?.status))
-      || ordersWithPendingReturns.has(order.order_id);
-    return Boolean(detail) && order.status === 'delivered' && order.delivery_status === 'delivered' && !hasActiveReturn && detail.can_return !== false;
+    if (!detail) return false;
+    const requests = detail.return_requests || [];
+    const hasActiveReturn = requests.some((r) => r.status !== 'rejected');
+    return order.status === 'delivered'
+      && order.delivery_status === 'delivered'
+      && !hasActiveReturn
+      && detail.can_return !== false;
   };
 
   const submitReview = async (e) => {
@@ -238,21 +239,21 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     }
     setSubmittingReturn(true);
     try {
-      const created = await api.requestReturn(
+      const result = await api.requestReturn(
         returnTarget.order_id,
         returnReason.trim(),
         selectedReturnItemIds
       );
+      const newReturnRows = result?.return_requests || [];
+
       setDetailCache((prev) => ({
         ...prev,
         [returnTarget.order_id]: {
           ...prev[returnTarget.order_id],
           can_return: false,
-          return_requests: [...(prev[returnTarget.order_id]?.return_requests || []), ...returnRequests],
+          return_requests: [...(prev[returnTarget.order_id]?.return_requests || []), ...newReturnRows],
         },
       }));
-      // Immediately mark order as having pending return
-      setOrdersWithPendingReturns(prev => new Set(prev).add(returnTarget.order_id));
       setReturnTarget(null);
       setReturnReason('');
       setSelectedReturnItemIds([]);
@@ -267,7 +268,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     setReturnTarget({ order_id: orderId });
     setReturnReason('');
     setSelectedReturnItemIds(
-      items.filter((item) => !item.return_requested).map((item) => item.order_item_id)
+      (items || []).filter((item) => !item.return_requested).map((item) => item.order_item_id)
     );
   };
 
@@ -318,26 +319,26 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       {getReturnBadge(order)}
                     </div>
                   </div>
-                  <div className="order-total">
-                    <span>Tk {Number(order.total_amount ?? 0).toFixed(2)}</span>
-                    {detail && order.status === 'delivered' && order.delivery_status === 'delivered' && (
-                      <div className="order-return-note">
-                        {canShowReturnButton(order) ? (
-                          <button
-                            className="btn-link-return"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openReturnModal(order);
-                            }}
-                          >
-                            Request Return
-                          </button>
-                        ) : (
-                          <span>{returnEligibility.message}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+<div className="order-total">
+  <span>Tk {Number(order.total_amount ?? 0).toFixed(2)}</span>
+  {!isExpanded && detail && order.status === 'delivered' && order.delivery_status === 'delivered' && (
+    <div className="order-return-note">
+      {canShowReturnButton(order) ? (
+        <button
+          className="btn-link-return"
+          onClick={(e) => {
+            e.stopPropagation();
+            openReturnForm(order.order_id, detail.items);
+          }}
+        >
+          Request Return
+        </button>
+      ) : (
+        <span>{returnEligibility.message}</span>
+      )}
+    </div>
+  )}
+</div>
                 </div>
 
                 {isExpanded && (
@@ -353,11 +354,10 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                     )}
 
                     {detail && !detail.error && detail.items.map((item) => {
-                      const hasReturnRequest = detail.return_requests?.some(r => r.order_item_id === item.order_item_id);
-                      const returnRequest = detail.return_requests?.find(r => r.order_item_id === item.order_item_id);
-                      const isReturnActive = returnTarget?.order_id === order.order_id;
-                      const isSelected = returnTarget?.selectedItems?.some(si => si.order_item_id === item.order_item_id);
-                      
+                      const returnRequest = (detail.return_requests || []).find(
+                        (r) => r.order_item_id === item.order_item_id
+                      );
+
                       return (
                         <div key={item.order_item_id ?? item.book_id} className="order-item-row">
                           <span>{item.title || `Book #${item.book_id}`}</span>
@@ -372,9 +372,13 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                             </button>
                           )}
                           {item.already_reviewed && <span className="review-done-tag">Reviewed ✓</span>}
-                          {hasReturnRequest && returnRequest && (
+                          {returnRequest && (
                             <span className={`return-status status-${returnRequest.status}`}>
-                              Return: {returnRequest.status === 'approved' || returnRequest.status === 'processed' ? 'approved' : returnRequest.status === 'rejected' ? 'rejected' : 'requested'}
+                              Return: {returnRequest.status === 'approved' || returnRequest.status === 'processed'
+                                ? 'approved'
+                                : returnRequest.status === 'rejected'
+                                  ? 'rejected'
+                                  : 'requested'}
                             </span>
                           )}
                         </div>
@@ -394,7 +398,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       </button>
                     )}
 
-                    {detail?.can_return && (
+                    {canShowReturnButton(order) && (
                       <button
                         className="btn-danger-outline"
                         onClick={() => openReturnForm(order.order_id, detail.items)}
@@ -407,24 +411,11 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       <p className="order-delivery-note compact-note">{returnEligibility.message}</p>
                     )}
 
-                    {detail && !detail.return_request && status !== 'delivered' && (
+                    {detail && status !== 'delivered' && (
                       <p className="order-delivery-note">
                         Returns are available within 10 days after delivery.
                       </p>
                     )}
-
-                    {detail?.return_window_expired && !detail.return_request && (
-                      <p className="order-delivery-note">
-                        The 10-day return window for this order has expired.
-                      </p>
-                    )}
-
-                    {detail?.return_request && (
-                      <p className="order-delivery-note">
-                        Only one return request is allowed per order.
-                      </p>
-                    )}
-
                   </div>
                 )}
               </div>
@@ -507,28 +498,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                 </button>
                 <button type="button" className="btn-cancel" onClick={() => setReturnTarget(null)}>Cancel</button>
               </div>
-              {(returnTarget.selectedItems?.length || 0) > 0 && (
-                <>
-                  <label>
-                    Reason for return
-                    <textarea
-                      required
-                      value={returnReason}
-                      onChange={(e) => setReturnReason(e.target.value)}
-                      placeholder="Why are you returning these items?"
-                      rows={3}
-                    />
-                  </label>
-                  <div className="admin-form-actions">
-                    <button type="submit" className="btn-save" disabled={submittingReturn}>
-                      {submittingReturn ? 'Submitting…' : 'Submit Return Request'}
-                    </button>
-                    <button type="button" className="btn-cancel" onClick={() => setReturnTarget(null)}>Cancel</button>
-                  </div>
-                </>
-              )}
-              {(returnTarget.selectedItems?.length || 0) === 0 && (
-                <p className="order-delivery-note">Select items to return, then fill reason and submit.</p>
+              {selectedReturnItemIds.length === 0 && (
+                <p className="order-delivery-note">Select at least one item to return.</p>
               )}
             </form>
           </div>

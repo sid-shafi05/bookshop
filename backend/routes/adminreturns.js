@@ -37,62 +37,50 @@ router.put('/:id', async (req, res) => {
 
   try {
     if (decision === 'approved') {
-      // Process approval via stored procedure
       await pool.query('CALL proc_process_return($1, $2, $3)', [id, condition, req.userId]);
     } else {
-      // Reject return request
+      // Reject return
       await pool.query('UPDATE returns SET status = $1, resolved_at = NOW() WHERE return_id = $2', ['rejected', id]);
-
-      // Fetch details of the rejected return
+      // Notify customer
       const returnRes = await pool.query('SELECT customer_id, order_id FROM returns WHERE return_id = $1', [id]);
-      
       if (returnRes.rows[0]) {
-        const { customer_id, order_id } = returnRes.rows[0];
-
-        // Check remaining returns status for this order
         const summary = await pool.query(
           `SELECT COUNT(*)::int AS total,
                   COUNT(*) FILTER (WHERE status IN ('approved', 'processed'))::int AS approved
            FROM returns WHERE order_id = $1`,
-          [order_id]
+          [returnRes.rows[0].order_id]
         );
-
         const { total, approved } = summary.rows[0];
-
         if (approved === 0) {
           await pool.query(
             `UPDATE orders SET status = 'delivered', payment_status = 'paid', updated_at = NOW()
              WHERE order_id = $1`,
-            [order_id]
+            [returnRes.rows[0].order_id]
           );
         } else if (approved === total) {
           await pool.query(
             `UPDATE orders SET status = 'returned', payment_status = 'refunded', updated_at = NOW()
              WHERE order_id = $1`,
-            [order_id]
+            [returnRes.rows[0].order_id]
           );
         } else {
           await pool.query(
             `UPDATE orders SET status = 'partially_returned', payment_status = 'partial_refund', updated_at = NOW()
              WHERE order_id = $1`,
-            [order_id]
+            [returnRes.rows[0].order_id]
           );
         }
-
-        // Send rejection notification
         await pool.query(
           `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
            VALUES ($1, $2, 'return', 'order', $3)`,
-          [customer_id, `Your return request for Order #${order_id} was rejected.`, order_id]
+          [returnRes.rows[0].customer_id, `Your return request for Order #${returnRes.rows[0].order_id} was rejected.`, returnRes.rows[0].order_id]
         );
       }
     }
-
     res.json({ message: `Return ${decision}` });
   } catch (err) {
     if (err.message.includes('not found')) return res.status(404).json({ error: 'Return request not found' });
     if (err.message.includes('Already resolved')) return res.status(400).json({ error: 'This return has already been resolved' });
-    
     console.error('Error resolving return:', err.message);
     res.status(500).json({ error: 'Failed to resolve return' });
   }
