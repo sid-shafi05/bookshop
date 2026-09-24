@@ -18,10 +18,19 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [submittingReview, setSubmittingReview] = useState(false);
 
   const [returnTarget, setReturnTarget] = useState(null); // { order_id }
+  const [selectedReturnItemIds, setSelectedReturnItemIds] = useState([]);
   const [returnReason, setReturnReason] = useState('');
   const [submittingReturn, setSubmittingReturn] = useState(false);
 
   const highlightRef = useRef(null);
+
+  const paymentLabel = (paymentStatus) => paymentStatus === 'partial_refund'
+    ? 'Partially refunded'
+    : paymentStatus === 'refunded'
+      ? 'Refunded'
+      : paymentStatus === 'paid'
+        ? 'Paid'
+        : paymentStatus || 'Unpaid';
 
   const loadOrders = async () => {
     if (!customerId) return;
@@ -68,6 +77,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
           delivery: data.delivery,
           can_review: data.can_review,
           can_return: data.can_return,
+          return_window_expired: data.return_window_expired,
+          return_window_days: data.return_window_days || 10,
           return_request: data.return_request,
         },
       }));
@@ -137,9 +148,17 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const submitReturn = async (e) => {
     e.preventDefault();
     if (!returnTarget) return;
+    if (selectedReturnItemIds.length === 0) {
+      alert('Select at least one book to return');
+      return;
+    }
     setSubmittingReturn(true);
     try {
-      const created = await api.requestReturn(returnTarget.order_id, returnReason.trim());
+      const created = await api.requestReturn(
+        returnTarget.order_id,
+        returnReason.trim(),
+        selectedReturnItemIds
+      );
       setDetailCache((prev) => ({
         ...prev,
         [returnTarget.order_id]: {
@@ -150,11 +169,20 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
       }));
       setReturnTarget(null);
       setReturnReason('');
+      setSelectedReturnItemIds([]);
     } catch (err) {
       alert(err.message || 'Failed to submit return request');
     } finally {
       setSubmittingReturn(false);
     }
+  };
+
+  const openReturnForm = (orderId, items) => {
+    setReturnTarget({ order_id: orderId });
+    setReturnReason('');
+    setSelectedReturnItemIds(
+      items.filter((item) => !item.return_requested).map((item) => item.order_item_id)
+    );
   };
 
   return (
@@ -193,7 +221,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       <span className={`order-status status-${status}`}>{order.status || 'Pending'}</span>
                       {' · '}
                       <span className={`order-payment status-${order.payment_status}`}>
-                        {order.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
+                        {paymentLabel(order.payment_status)}
                       </span>
                     </div>
                     <div className="order-meta">
@@ -250,7 +278,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                     {detail?.can_return && (
                       <button
                         className="btn-danger-outline"
-                        onClick={() => setReturnTarget({ order_id: order.order_id })}
+                        onClick={() => openReturnForm(order.order_id, detail.items)}
                       >
                         Request Return
                       </button>
@@ -259,6 +287,24 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                     {detail?.return_request && (
                       <p className="order-delivery-note">
                         Return status: <strong>{detail.return_request.status}</strong>
+                      </p>
+                    )}
+
+                    {detail && !detail.return_request && status !== 'delivered' && (
+                      <p className="order-delivery-note">
+                        Returns are available within 10 days after delivery.
+                      </p>
+                    )}
+
+                    {detail?.return_window_expired && !detail.return_request && (
+                      <p className="order-delivery-note">
+                        The 10-day return window for this order has expired.
+                      </p>
+                    )}
+
+                    {detail?.return_request && (
+                      <p className="order-delivery-note">
+                        Only one return request is allowed per order.
                       </p>
                     )}
 
@@ -307,6 +353,27 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
           <div className="review-modal-overlay" onClick={() => setReturnTarget(null)}>
             <form className="review-modal" onClick={(e) => e.stopPropagation()} onSubmit={submitReturn}>
               <h4>Request Return</h4>
+              <p>Select the books you want to return:</p>
+              <ul className="return-item-list">
+                {(detailCache[returnTarget.order_id]?.items || [])
+                  .filter((item) => !item.return_requested)
+                  .map((item) => (
+                    <li key={item.order_item_id}>
+                      <label className="return-item-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedReturnItemIds.includes(item.order_item_id)}
+                          onChange={(e) => {
+                            setSelectedReturnItemIds((prev) => e.target.checked
+                              ? [...prev, item.order_item_id]
+                              : prev.filter((id) => id !== item.order_item_id));
+                          }}
+                        />
+                        {item.title || `Book #${item.book_id}`} × {item.quantity ?? 1}
+                      </label>
+                    </li>
+                  ))}
+              </ul>
               <label>
                 Reason
                 <textarea

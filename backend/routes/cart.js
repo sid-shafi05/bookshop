@@ -40,7 +40,7 @@ router.get('/:customer_id', async (req, res) => {
 
     try {
         const query =
-            ` SELECT b.book_id,b.title,b.cover_url,b.price,ci.quantity,(b.price*ci.quantity) AS per_book_total,
+            ` SELECT b.book_id,b.title,b.cover_url,b.price,b.stock_quantity,ci.quantity,(b.price*ci.quantity) AS per_book_total,
                             COALESCE(STRING_AGG(a.name,', '), 'Various Authors') AS author_names
         FROM carts c  
         join cart_items ci ON c.cart_id=ci.cart_id 

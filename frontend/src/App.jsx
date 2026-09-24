@@ -218,6 +218,16 @@ const handleSignOut = async () => {
     catch (e) { showToast(e.message || 'Error adding to cart'); }
   };
 
+  const handleUpdateCartQuantity = async (bookId, quantity) => {
+    try {
+      await api.updateCartQuantity({ customer_id: user.id, book_id: bookId, updated_qty: quantity });
+      await refreshCart(user.id);
+    } catch (e) {
+      showToast(e.message || 'That quantity is not available');
+      await refreshCart(user.id);
+    }
+  };
+
   const handleHeartClick = (book) => (user ? setBookToSave(book) : setShowAuthModal(true));
 
   // Invite-based setup links are public and must be handled before the normal
@@ -375,10 +385,7 @@ const handleSignOut = async () => {
             isOpen={showCart}
             onClose={() => setShowCart(false)}
             cart={cart}
-            onUpdateQty={async (bid, qty) => {
-              await api.updateCartQuantity({ customer_id: user.id, book_id: bid, updated_qty: qty });
-              refreshCart(user.id);
-            }}
+            onUpdateQty={handleUpdateCartQuantity}
             onRemoveItem={async (bid) => {
               await api.removeFromCart({ customer_id: user.id, book_id: bid });
               refreshCart(user.id);

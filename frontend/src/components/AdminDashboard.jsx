@@ -105,6 +105,16 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
           onClick={() => setActiveTab('deliverymen')}
         />
         <TabButton
+          label="Returns"
+          active={activeTab === 'returns'}
+          onClick={() => setActiveTab('returns')}
+        />
+        <TabButton
+          label="Analytics"
+          active={activeTab === 'analytics'}
+          onClick={() => setActiveTab('analytics')}
+        />
+        <TabButton
           label="Users"
           active={activeTab === 'users'}
           onClick={() => setActiveTab('users')}
@@ -116,6 +126,8 @@ export default function AdminDashboard({ onClose, user , onOpenProfile}) {
         {activeTab === 'coupons' && <CouponsTab />}
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'deliverymen' && <DeliverymenTab />}
+        {activeTab === 'returns' && <ReturnsTab />}
+        {activeTab === 'analytics' && <AnalyticsTab />}
         {activeTab === 'users' && <UsersTab />}
       </div>
     </main>
@@ -980,30 +992,21 @@ function OrdersTab() {
                   </td>
 
                   <td>
-                    {order.status === 'cancelled' ? (
-                      <span
-                        style={{
-                          color: '#8c827a',
-                          fontSize: '0.8rem'
-                        }}
-                      >
-                        —
-                      </span>
-                    ) : (
-                      <span
-                        className={`admin-stock-pill ${
-                          order.payment_status === 'paid'
-                            ? 'ok'
-                            : 'low'
-                        }`}
-                      >
-                        {order.payment_status}
-                      </span>
-                    )}
+                    <span
+                      className={`admin-stock-pill ${
+                        ['paid', 'refunded'].includes(order.payment_status)
+                          ? 'ok'
+                          : 'low'
+                      }`}
+                    >
+                      {order.payment_status === 'partial_refund'
+                        ? 'Partially refunded'
+                        : order.payment_status}
+                    </span>
                   </td>
 
                   <td>
-                    {['shipped', 'delivered', 'cancelled'].includes(
+                    {['shipped', 'delivered', 'cancelled', 'returned', 'partially_returned'].includes(
                       order.status
                     ) ? (
                       <span
@@ -1013,7 +1016,7 @@ function OrdersTab() {
                           cursor: 'default'
                         }}
                       >
-                        {order.status}
+                        {order.status === 'partially_returned' ? 'Partially returned' : order.status}
                       </span>
                     ) : (
                       <select
@@ -1382,9 +1385,9 @@ function ReturnsTab() {
     load();
   }, []);
 
-  const resolve = async (id, decision) => {
+  const resolve = async (id, decision, condition) => {
     try {
-      await api.resolveReturn(id, decision);
+      await api.resolveReturn(id, decision, condition);
       loadReturnsQuiet();
     } catch (err) {
       alert(
@@ -1483,18 +1486,20 @@ function ReturnsTab() {
                 </td>
 
                 <td>
-                  {r.status === 'pending' ? (
+                  {['requested', 'pending'].includes(r.status) ? (
                     <div className="admin-actions-cell">
                       <button
                         className="admin-icon-btn"
-                        onClick={() =>
-                          resolve(
-                            r.return_id,
-                            'approved'
-                          )
-                        }
+                        onClick={() => resolve(r.return_id, 'approved', 'resellable')}
                       >
-                        Approve
+                        Approve & Restock
+                      </button>
+
+                      <button
+                        className="admin-icon-btn"
+                        onClick={() => resolve(r.return_id, 'approved', 'damaged')}
+                      >
+                        Approve as Damaged
                       </button>
 
                       <button
@@ -2440,6 +2445,264 @@ function UsersTab() {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   ANALYTICS TAB
+   ========================================================================== */
+
+function AnalyticsTab() {
+  const [quickStats, setQuickStats] = useState(null);
+  const [revenue, setRevenue] = useState([]);
+  const [topBooks, setTopBooks] = useState([]);
+  const [lowStock, setLowStock] = useState([]);
+  const [categoryRevenue, setCategoryRevenue] = useState([]);
+  const [topRated, setTopRated] = useState([]);
+  const [orderFunnel, setOrderFunnel] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadAll = async () => {
+    try {
+      setLoading(true);
+      const [
+        statsRes,
+        revenueRes,
+        topBooksRes,
+        lowStockRes,
+        categoryRes,
+        topRatedRes,
+        funnelRes
+      ] = await Promise.all([
+        api.get('/admin/analytics/quick-stats'),
+        api.get('/admin/analytics/revenue?months=12'),
+        api.get('/admin/analytics/top-books?limit=10'),
+        api.get('/admin/analytics/low-stock?threshold=10'),
+        api.get('/admin/analytics/category-revenue'),
+        api.get('/admin/analytics/top-rated?limit=10'),
+        api.get('/admin/analytics/order-funnel')
+      ]);
+
+      setQuickStats(statsRes);
+      setRevenue(revenueRes);
+      setTopBooks(topBooksRes);
+      setLowStock(lowStockRes);
+      setCategoryRevenue(categoryRes);
+      setTopRated(topRatedRes);
+      setOrderFunnel(funnelRes);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+      setError(err.message || 'Failed to load analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  if (loading) {
+    return <p className="admin-state-msg">Loading analytics...</p>;
+  }
+
+  if (error) {
+    return <p className="admin-state-msg error">{error}</p>;
+  }
+
+  const formatCurrency = (val) => `Tk ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+  return (
+    <div>
+      <div className="admin-panel-toolbar">
+        <h3>Analytics Dashboard</h3>
+        <button className="admin-primary-btn" onClick={loadAll}>Refresh</button>
+      </div>
+
+      {/* Quick Stats Cards */}
+      <div className="analytics-grid analytics-grid-4">
+        <div className="analytics-card">
+          <div className="analytics-card-icon revenue">💰</div>
+          <div className="analytics-card-label">Total Revenue</div>
+          <div className="analytics-card-value">{formatCurrency(quickStats?.total_revenue || 0)}</div>
+        </div>
+        <div className="analytics-card">
+          <div className="analytics-card-icon orders">📦</div>
+          <div className="analytics-card-label">Total Orders</div>
+          <div className="analytics-card-value">{quickStats?.total_orders || 0}</div>
+        </div>
+        <div className="analytics-card">
+          <div className="analytics-card-icon customers">👥</div>
+          <div className="analytics-card-label">Total Customers</div>
+          <div className="analytics-card-value">{quickStats?.total_customers || 0}</div>
+        </div>
+        <div className="analytics-card">
+          <div className="analytics-card-icon warning">⚠️</div>
+          <div className="analytics-card-label">Low Stock Items</div>
+          <div className="analytics-card-value">{quickStats?.low_stock_count || 0}</div>
+        </div>
+      </div>
+
+      {/* Revenue Trend & Top Books */}
+      <div className="analytics-grid analytics-grid-2">
+        <div className="analytics-panel">
+          <h4>Revenue Trend (12 Months)</h4>
+          {revenue.length === 0 ? (
+            <p className="admin-state-msg">No revenue data</p>
+          ) : (
+            <div className="analytics-chart">
+              {revenue.map((r, i) => (
+                <div key={r.month} className="chart-bar" style={{ height: `${Math.max(10, (Number(r.revenue) / Math.max(...revenue.map(r => Number(r.revenue))) * 100))}%` }}>
+                  <span className="chart-bar-value">{formatCurrency(r.revenue)}</span>
+                  <span className="chart-bar-label">{new Date(r.month).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="analytics-panel">
+          <h4>Top 10 Best Selling Books</h4>
+          {topBooks.length === 0 ? (
+            <p className="admin-state-msg">No sales data</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Book</th>
+                  <th>Qty Sold</th>
+                  <th>Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topBooks.map((b, i) => (
+                  <tr key={b.book_id}>
+                    <td>{i + 1}</td>
+                    <td>{b.title}</td>
+                    <td>{b.qty_sold}</td>
+                    <td>{formatCurrency(b.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Category Revenue & Low Stock */}
+      <div className="analytics-grid analytics-grid-2">
+        <div className="analytics-panel">
+          <h4>Revenue by Category</h4>
+          {categoryRevenue.length === 0 ? (
+            <p className="admin-state-msg">No category data</p>
+          ) : (
+            <div className="category-bar-list">
+              {categoryRevenue.map((c, index) => {
+                const percentage = Math.max(0, Math.min(100, Number(c.pct || 0)));
+                return (
+                <div key={c.category} className="category-bar-row">
+                  <div className="category-bar-heading">
+                    <span>{index + 1}. {c.category}</span>
+                    <span>{formatCurrency(c.revenue)} ({percentage.toFixed(1)}%)</span>
+                  </div>
+                  <div className="category-bar-track">
+                    <div className="category-bar-fill" style={{ width: `${percentage}%` }}></div>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="analytics-panel">
+          <h4>Low Stock Books (≤10)</h4>
+          {lowStock.length === 0 ? (
+            <p className="admin-state-msg">All items well stocked</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Book</th>
+                  <th>Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowStock.map((b) => (
+                  <tr key={b.book_id}>
+                    <td>{b.title}</td>
+                    <td><span className="admin-stock-pill out">{b.stock_quantity}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Top Rated & Order Funnel */}
+      <div className="analytics-grid analytics-grid-2">
+        <div className="analytics-panel">
+          <h4>Top Rated Books</h4>
+          {topRated.length === 0 ? (
+            <p className="admin-state-msg">No ratings yet</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Book</th>
+                  <th>Avg Rating</th>
+                  <th>Reviews</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topRated.map((b) => (
+                  <tr key={b.book_id}>
+                    <td>{b.title}</td>
+                    <td>{b.avg_rating} ⭐</td>
+                    <td>{b.review_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="analytics-panel">
+          <h4>Order Funnel</h4>
+          {orderFunnel.length === 0 ? (
+            <p className="admin-state-msg">No order data</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Count</th>
+                  <th>Total Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderFunnel.map((f) => (
+                  <tr key={f.status}>
+                    <td>
+                      <span className={`admin-stock-pill ${f.status === 'delivered' ? 'ok' : ['returned', 'partially_returned'].includes(f.status) ? 'out' : 'low'}`}>
+                        {f.status === 'partially_returned' ? 'Partially returned' : f.status}
+                      </span>
+                    </td>
+                    <td>{f.count}</td>
+                    <td>{formatCurrency(f.total_amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }

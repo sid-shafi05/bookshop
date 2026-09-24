@@ -69,6 +69,9 @@ export default function BookCard({ book, onAddToCart, onHeartClick, onOpenDetail
             {book.stock_quantity > 0 ? 'In Stock' : 'Out of Stock'}
           </span>
         </div>
+        {book.stock_quantity > 0 && book.stock_quantity <= 5 && (
+          <p className="stock-warning">Only {book.stock_quantity} left in stock</p>
+        )}
 
         <button
           className="cart-action-btn"

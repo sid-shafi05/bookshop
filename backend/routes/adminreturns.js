@@ -8,10 +8,13 @@ router.use(verifyToken, requireAdmin);
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT r.*, o.total_amount, o.payment_method, u.username, u.email
+      `SELECT r.*, o.total_amount, o.payment_method, u.username, u.email,
+              oi.book_id, oi.quantity, oi.unit_price, b.title
        FROM returns r
        JOIN orders o ON o.order_id = r.order_id
        JOIN users u ON u.user_id = r.customer_id
+       JOIN order_items oi ON oi.order_item_id = r.order_item_id
+       JOIN books b ON b.book_id = oi.book_id
        ORDER BY r.requested_at DESC`
     );
     res.json(result.rows);
@@ -23,70 +26,63 @@ router.get('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { decision } = req.body; // 'approved' | 'rejected'
+  const { decision, condition } = req.body; // decision: 'approved' | 'rejected', condition: 'resellable' | 'damaged'
 
   if (!['approved', 'rejected'].includes(decision)) {
     return res.status(400).json({ error: 'Invalid decision' });
   }
+  if (decision === 'approved' && !['resellable', 'damaged'].includes(condition)) {
+    return res.status(400).json({ error: 'Condition must be resellable or damaged' });
+  }
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    const returnRes = await client.query('SELECT * FROM returns WHERE return_id = $1 FOR UPDATE', [id]);
-    const returnRow = returnRes.rows[0];
-    if (!returnRow) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Return request not found' });
-    }
-    if (returnRow.status !== 'pending') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'This return has already been resolved' });
-    }
-
-    await client.query(
-      `UPDATE returns SET status = $1, resolved_at = CURRENT_TIMESTAMP WHERE return_id = $2`,
-      [decision, id]
-    );
-
     if (decision === 'approved') {
-      await client.query(
-        `UPDATE orders SET status = 'returned', payment_status = 'refunded', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1`,
-        [returnRow.order_id]
-      );
-
-      const itemsRes = await client.query(
-        'SELECT book_id, quantity FROM order_items WHERE order_id = $1',
-        [returnRow.order_id]
-      );
-      for (const item of itemsRes.rows) {
-        await client.query(
-          'UPDATE books SET stock_quantity = stock_quantity + $1 WHERE book_id = $2',
-          [item.quantity, item.book_id]
+      await pool.query('CALL proc_process_return($1, $2, $3)', [id, condition, req.userId]);
+    } else {
+      // Reject return
+      await pool.query('UPDATE returns SET status = $1, resolved_at = NOW() WHERE return_id = $2', ['rejected', id]);
+      // Notify customer
+      const returnRes = await pool.query('SELECT customer_id, order_id FROM returns WHERE return_id = $1', [id]);
+      if (returnRes.rows[0]) {
+        const summary = await pool.query(
+          `SELECT COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE status IN ('approved', 'processed'))::int AS approved
+           FROM returns WHERE order_id = $1`,
+          [returnRes.rows[0].order_id]
+        );
+        const { total, approved } = summary.rows[0];
+        if (approved === 0) {
+          await pool.query(
+            `UPDATE orders SET status = 'delivered', payment_status = 'paid', updated_at = NOW()
+             WHERE order_id = $1`,
+            [returnRes.rows[0].order_id]
+          );
+        } else if (approved === total) {
+          await pool.query(
+            `UPDATE orders SET status = 'returned', payment_status = 'refunded', updated_at = NOW()
+             WHERE order_id = $1`,
+            [returnRes.rows[0].order_id]
+          );
+        } else {
+          await pool.query(
+            `UPDATE orders SET status = 'partially_returned', payment_status = 'partial_refund', updated_at = NOW()
+             WHERE order_id = $1`,
+            [returnRes.rows[0].order_id]
+          );
+        }
+        await pool.query(
+          `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
+           VALUES ($1, $2, 'return', 'order', $3)`,
+          [returnRes.rows[0].customer_id, `Your return request for Order #${returnRes.rows[0].order_id} was rejected.`, returnRes.rows[0].order_id]
         );
       }
     }
-
-    await client.query(
-      `INSERT INTO notifications (user_id, text, topic, reference_type, reference_id)
-       VALUES ($1, $2, 'return', 'order', $3)`,
-      [
-        returnRow.customer_id,
-        decision === 'approved'
-          ? `Your return for Order #${returnRow.order_id} was approved. A refund has been issued.`
-          : `Your return request for Order #${returnRow.order_id} was rejected.`,
-        returnRow.order_id
-      ]
-    );
-
-    await client.query('COMMIT');
     res.json({ message: `Return ${decision}` });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (err.message.includes('not found')) return res.status(404).json({ error: 'Return request not found' });
+    if (err.message.includes('Already resolved')) return res.status(400).json({ error: 'This return has already been resolved' });
     console.error('Error resolving return:', err.message);
     res.status(500).json({ error: 'Failed to resolve return' });
-  } finally {
-    client.release();
   }
 });
 

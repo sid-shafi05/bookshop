@@ -209,7 +209,7 @@ CREATE TABLE orders (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT orders_total_check CHECK (total_amount >= 0),
-    CONSTRAINT orders_status_check CHECK (status IN ('pending','confirmed','processing','shipped','delivered','cancelled','returned')),
+    CONSTRAINT orders_status_check CHECK (status IN ('pending','confirmed','processing','shipped','delivered','cancelled','returned','partially_returned')),
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT,
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE SET NULL
 );

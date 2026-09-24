@@ -457,7 +457,7 @@ router.post('/coupons', async (req, res) => {
     );
 
     const coupon = result.rows[0];
-    await notifyAllCustomers({
+    await notifyCustomers({
       text: `New coupon ${coupon.code} is now live: ${coupon.discount_percent}% off on orders of Tk ${coupon.min_order_amount || 0}+.`,
       topic: 'general',
       referenceType: 'coupon',
@@ -546,7 +546,7 @@ router.put('/coupons/:id', async (req, res) => {
 
     const updatedCoupon = result.rows[0];
     if (updatedCoupon.is_active) {
-      await notifyAllCustomers({
+      await notifyCustomers({
         text: `Coupon ${updatedCoupon.code} is now active: ${updatedCoupon.discount_percent}% off with a minimum spend of Tk ${updatedCoupon.min_order_amount || 0}.`,
         topic: 'general',
         referenceType: 'coupon',
@@ -747,7 +747,7 @@ router.put('/orders/:id', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ['pending','confirmed','processing','shipped','delivered','cancelled','returned'];
+  const validStatuses = ['pending','confirmed','processing','shipped','delivered','cancelled','returned','partially_returned'];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: 'Invalid status value' });
   }

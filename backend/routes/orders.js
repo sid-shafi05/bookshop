@@ -66,12 +66,7 @@ router.post('/checkout', async (req, res) => {
       return res.status(400).json({ error: 'Your cart is empty' });
     }
 
-    for (const item of cartItems) {
-      if (item.quantity > item.stock_quantity || item.quantity <= 0) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({ error: `"${item.title}" only has ${item.stock_quantity} left in stock` });
-      }
-    }
+    // Stock validation now handled by DB trigger trg_validate_stock_order
 
     const subtotal = cartItems.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0);
     let discount = 0;
@@ -160,6 +155,9 @@ router.post('/checkout', async (req, res) => {
     res.status(201).json({ order, subtotal: subtotal.toFixed(2), discount: discount.toFixed(2), total: total.toFixed(2) });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.message?.includes('Insufficient stock')) {
+      return res.status(400).json({ error: 'Some items are no longer available in the requested quantity. Please review your cart.' });
+    }
     console.error('Checkout error:', err.message);
     res.status(500).json({ error: 'Failed to place order' });
   } finally {
@@ -193,6 +191,104 @@ router.get('/customer/:customer_id', async (req, res) => {
   }
 });
 
+router.post('/:id/return', async (req, res) => {
+  const { id } = req.params;
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  const requestedItemIds = Array.isArray(req.body.item_ids)
+    ? [...new Set(req.body.item_ids.map(Number).filter(Number.isInteger))]
+    : null;
+  if (!reason) return res.status(400).json({ error: 'A return reason is required' });
+
+  const ownership = await verifyOrderOwnership(id, req.userId);
+  if (ownership === null) return res.status(404).json({ error: 'Order not found' });
+  if (ownership === false) return res.status(403).json({ error: 'Access denied: not your order' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderRes = await client.query(
+      'SELECT status FROM orders WHERE order_id = $1 FOR UPDATE',
+      [id]
+    );
+    if (orderRes.rows[0]?.status !== 'delivered') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only delivered orders can be returned' });
+    }
+
+    const deliveryRes = await client.query(
+      'SELECT delivery_date FROM deliveries WHERE order_id = $1 ORDER BY delivery_id DESC LIMIT 1',
+      [id]
+    );
+    const deliveryDate = deliveryRes.rows[0]?.delivery_date;
+    if (!deliveryDate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order does not have a delivery date yet' });
+    }
+    if (Date.now() - new Date(deliveryDate).getTime() > 10 * 24 * 60 * 60 * 1000) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'The 10-day return window for this order has expired' });
+    }
+
+    const existingRes = await client.query(
+      'SELECT return_id FROM returns WHERE order_id = $1 LIMIT 1',
+      [id]
+    );
+    if (existingRes.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A return request has already been submitted for this order' });
+    }
+
+    const itemsRes = await client.query(
+      'SELECT order_item_id FROM order_items WHERE order_id = $1 ORDER BY order_item_id',
+      [id]
+    );
+    if (itemsRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order has no items to return' });
+    }
+
+    const orderItemIds = new Set(itemsRes.rows.map((row) => Number(row.order_item_id)));
+    const selectedItemIds = requestedItemIds || [...orderItemIds];
+
+    if (selectedItemIds.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Select at least one item to return' });
+    }
+    if (selectedItemIds.some((itemId) => !orderItemIds.has(itemId))) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'One or more selected items do not belong to this order' });
+    }
+    const created = [];
+    for (const itemId of selectedItemIds) {
+      const result = await client.query(
+        `INSERT INTO returns (order_id, order_item_id, customer_id, reason)
+         VALUES ($1, $2, $3, $4)
+         RETURNING return_id, order_id, order_item_id, reason, status, requested_at`,
+        [id, itemId, req.userId, reason]
+      );
+      created.push(result.rows[0]);
+    }
+
+    await notifyAdmins({
+      text: `Return requested for Order #${id}.`,
+      topic: 'order',
+      referenceType: 'order',
+      referenceId: id,
+      client,
+    });
+
+    await client.query('COMMIT');
+    res.status(201).json(created[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Return request error:', err.message);
+    res.status(500).json({ error: 'Failed to submit return request' });
+  } finally {
+    client.release();
+  }
+});
+
 // ====================================================================
 // GET /orders/:id -> full order detail (unchanged)
 // ====================================================================
@@ -209,7 +305,8 @@ router.get('/:id', async (req, res) => {
 
     const itemsRes = await pool.query(
       `SELECT oi.order_item_id, oi.book_id, oi.quantity, oi.unit_price, b.title, b.cover_url,
-        EXISTS(SELECT 1 FROM reviews r WHERE r.book_id = oi.book_id AND r.customer_id = $2) AS already_reviewed
+        EXISTS(SELECT 1 FROM reviews r WHERE r.book_id = oi.book_id AND r.customer_id = $2) AS already_reviewed,
+        EXISTS(SELECT 1 FROM returns r WHERE r.order_item_id = oi.order_item_id AND r.status <> 'rejected') AS return_requested
        FROM order_items oi
        JOIN books b ON b.book_id = oi.book_id
        WHERE oi.order_id = $1
@@ -225,11 +322,30 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    const returnsRes = await pool.query(
+      `SELECT return_id, order_item_id, reason, status, requested_at, resolved_at
+       FROM returns
+       WHERE order_id = $1
+       ORDER BY requested_at DESC`,
+      [id]
+    );
+    const latestReturn = returnsRes.rows[0] || null;
+    const deliveryDate = deliveryRes.rows[0]?.delivery_date;
+    const withinReturnWindow = deliveryDate
+      && Date.now() - new Date(deliveryDate).getTime() <= 10 * 24 * 60 * 60 * 1000;
+    const canReturn = order.status === 'delivered'
+      && withinReturnWindow
+      && returnsRes.rows.length === 0;
+
     res.json({
       order,
       items: itemsRes.rows,
       delivery: deliveryRes.rows[0] || null,
-      can_review: order.status === 'delivered'
+      can_review: order.status === 'delivered',
+      can_return: canReturn,
+      return_window_expired: order.status === 'delivered' && !withinReturnWindow,
+      return_window_days: 10,
+      return_request: latestReturn
     });
   } catch (err) {
     console.error('Error fetching order detail:', err.message);
@@ -239,7 +355,7 @@ router.get('/:id', async (req, res) => {
 
 // ====================================================================
 // PUT /orders/:id/cancel -> customer-initiated cancellation
-// Now also notifies admins so they don't keep prepping/shipping it.
+// Now uses proc_cancel_order procedure
 // ====================================================================
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
@@ -247,43 +363,15 @@ router.put('/:id/cancel', async (req, res) => {
   if (ownership === null) return res.status(404).json({ error: 'Order not found' });
   if (ownership === false) return res.status(403).json({ error: 'You cannot cancel another user\'s order' });
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const orderRes = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
-    const order = orderRes.rows[0];
-    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Order not found' }); }
-    if (!['pending', 'confirmed'].includes(order.status)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'This order can no longer be cancelled — it is already being prepared or shipped' });
-    }
-
-    const itemsRes = await client.query('SELECT book_id, quantity FROM order_items WHERE order_id = $1', [id]);
-    for (const item of itemsRes.rows) {
-      await client.query('UPDATE books SET stock_quantity = stock_quantity + $1 WHERE book_id = $2', [item.quantity, item.book_id]);
-    }
-
-    const result = await client.query(
-      `UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *`,
-      [id]
-    );
-
-    await notifyAdmins({
-      text: `Order #${id} was cancelled by the customer.`,
-      topic: 'order',
-      referenceType: 'order',
-      referenceId: Number(id),
-      client,
-    });
-
-    await client.query('COMMIT');
-    res.json(result.rows[0]);
+    await pool.query('CALL proc_cancel_order($1, $2)', [id, req.userId]);
+    res.json({ message: 'Order cancelled successfully' });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (err.message.includes('Order not found')) return res.status(404).json({ error: 'Order not found' });
+    if (err.message.includes('Access denied')) return res.status(403).json({ error: 'You cannot cancel another user\'s order' });
+    if (err.message.includes('can no longer be cancelled')) return res.status(400).json({ error: 'This order can no longer be cancelled' });
     console.error('Cancel order error:', err.message);
     res.status(500).json({ error: 'Failed to cancel order' });
-  } finally {
-    client.release();
   }
 });
 
