@@ -50,59 +50,48 @@ export default function WishlistDrawer({
       <div className="wishlist-view-card" onClick={(e) => e.stopPropagation()}>
 
         {/* LEFT SIDEBAR */}
-        <aside className="wishlist-sidebar">
-          <div className="sidebar-group">
-            <h4 className="sidebar-heading">Your Orders</h4>
-          </div>
+        {/* LEFT SIDEBAR */}
+<aside className="wishlist-sidebar">
+  <div className="sidebar-group active-group">
+    <h4 className="sidebar-heading text-blue">Your Wishlists</h4>
 
-          <div className="sidebar-group active-group">
-            <h4 className="sidebar-heading text-blue">Your Wishlists</h4>
+    <div className="wishlist-links-list">
+      {wishlists.map((w) => (
+        <div
+          key={w.wishlist_id}
+          className={`wishlist-link-item ${Number(selectedWishlistId) === w.wishlist_id ? 'active' : ''}`}
+          onClick={() => {
+            onSelectWishlist(w.wishlist_id);
+            setIsEditing(false);
+          }}
+        >
+          <span className="list-title">{w.wishlist_name}</span>
+          <span className="list-count">{w.total_saved_books || 0}</span>
+        </div>
+      ))}
+    </div>
 
-            <div className="wishlist-links-list">
-              {wishlists.map((w) => (
-                <div
-                  key={w.wishlist_id}
-                  className={`wishlist-link-item ${Number(selectedWishlistId) === w.wishlist_id ? 'active' : ''}`}
-                  onClick={() => {
-                    onSelectWishlist(w.wishlist_id);
-                    setIsEditing(false);
-                  }}
-                >
-                  <span className="list-title">{w.wishlist_name}</span>
-                  <span className="list-count">{w.total_saved_books || 0}</span>
-                </div>
-              ))}
-            </div>
-
-            {!showCreateInput ? (
-              <button className="create-wishlist-link" onClick={() => setShowCreateInput(true)}>
-                Create New Wishlist
-              </button>
-            ) : (
-              <form onSubmit={handleCreateSubmit} className="sidebar-create-form">
-                <input
-                  type="text"
-                  placeholder="Wishlist Name"
-                  autoFocus
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                />
-                <div className="create-btn-row">
-                  <button type="submit" className="btn-save-sm">Save</button>
-                  <button type="button" className="btn-cancel-sm" onClick={() => setShowCreateInput(false)}>Cancel</button>
-                </div>
-              </form>
-            )}
-          </div>
-
-          <div className="sidebar-group">
-            <h4 className="sidebar-heading">Your Profile</h4>
-          </div>
-
-          <div className="sidebar-group">
-            <h4 className="sidebar-heading signout-text" onClick={onSignOut}>Sign Out</h4>
-          </div>
-        </aside>
+    {!showCreateInput ? (
+      <button className="create-wishlist-link" onClick={() => setShowCreateInput(true)}>
+        Create New Wishlist
+      </button>
+    ) : (
+      <form onSubmit={handleCreateSubmit} className="sidebar-create-form">
+        <input
+          type="text"
+          placeholder="Wishlist Name"
+          autoFocus
+          value={newListName}
+          onChange={(e) => setNewListName(e.target.value)}
+        />
+        <div className="create-btn-row">
+          <button type="submit" className="btn-save-sm">Save</button>
+          <button type="button" className="btn-cancel-sm" onClick={() => setShowCreateInput(false)}>Cancel</button>
+        </div>
+      </form>
+    )}
+  </div>
+</aside>
 
         {/* RIGHT MAIN AREA */}
         <main className="wishlist-main-pane">

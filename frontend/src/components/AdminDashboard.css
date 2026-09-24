@@ -1133,3 +1133,6 @@ input {
 .admin-file-input::file-selector-button:hover {
   background: #e8dccf;
 }
+.admin-form-grid textarea {
+  resize: none;
+}
