@@ -18,7 +18,6 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
           ) : (
             cart.items.map((item) => {
               const availableStock = Number(item.stock_quantity ?? 0);
-              const lowStock = availableStock > 0 && availableStock <= 5;
               const canAddMore = availableStock > 0 && item.quantity < availableStock;
 
               return (
@@ -26,7 +25,6 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
                   <div className="row-info">
                     <h4>{item.title}</h4>
                     <span className="row-price">Tk {Number(item.per_book_total).toFixed(2)}</span>
-                    {lowStock && <div className="cart-stock-warning">Only {availableStock} left in stock</div>}
                   </div>
                   <div className="row-controls">
                     <button disabled={item.quantity <= 0} onClick={() => onUpdateQty(item.book_id, item.quantity - 1)}>-</button>
@@ -55,7 +53,7 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
                         }
 
                         if (val > availableStock) {
-                          const message = `Only ${availableStock} copies available for "${item.title}".`;
+                          const message = `Cannot request ${val} copies of "${item.title}". Only ${availableStock} available in stock.`;
                           if (showToast) showToast(message);
                           e.target.value = item.quantity;
                           return;
@@ -71,13 +69,13 @@ export default function CartDrawer({ isOpen, onClose, cart, onUpdateQty, onRemov
                     />
 
                     <button
-                      disabled={!canAddMore}
                       onClick={() => {
+                        const nextQty = item.quantity + 1;
                         if (!canAddMore) {
-                          if (showToast) showToast(`Only ${availableStock} copies available for "${item.title}".`);
+                          if (showToast) showToast(`Cannot request ${nextQty} copies of "${item.title}". Only ${availableStock} available in stock.`);
                           return;
                         }
-                        onUpdateQty(item.book_id, item.quantity + 1);
+                        onUpdateQty(item.book_id, nextQty);
                       }}
                       title={canAddMore ? 'Add more' : `Max available: ${availableStock}`}
                     >

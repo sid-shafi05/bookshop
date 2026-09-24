@@ -43,8 +43,7 @@ BEGIN
     JOIN orders o ON o.order_id = oi.order_id
     JOIN deliveries d ON d.order_id = o.order_id
     WHERE oi.book_id = NEW.book_id
-      AND oi.customer_id = NEW.customer_id
-      AND o.status = 'delivered'
+      AND o.customer_id = NEW.customer_id
       AND d.status = 'delivered'
   ) THEN
     RAISE EXCEPTION 'You can only review books you have purchased and received';

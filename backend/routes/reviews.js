@@ -45,9 +45,10 @@ router.get('/eligibility/:customer_id/:book_id', async (req, res) => {
     }
 
     const deliveredRes = await pool.query(
-      `SELECT 1 FROM orders o
+      `SELECT 1 FROM deliveries d
+       JOIN orders o ON o.order_id = d.order_id
        JOIN order_items oi ON oi.order_id = o.order_id
-       WHERE o.customer_id = $1 AND oi.book_id = $2 AND o.status = 'delivered'
+       WHERE o.customer_id = $1 AND oi.book_id = $2 AND d.status = 'delivered'
        LIMIT 1`,
       [customer_id, book_id]
     );
@@ -80,9 +81,10 @@ router.post('/', async (req, res) => {
   try {
     // Enforce server-side: only customers who actually received the book can review it
     const deliveredRes = await pool.query(
-      `SELECT 1 FROM orders o
+      `SELECT 1 FROM deliveries d
+       JOIN orders o ON o.order_id = d.order_id
        JOIN order_items oi ON oi.order_id = o.order_id
-       WHERE o.customer_id = $1 AND oi.book_id = $2 AND o.status = 'delivered'
+       WHERE o.customer_id = $1 AND oi.book_id = $2 AND d.status = 'delivered'
        LIMIT 1`,
       [customer_id, book_id]
     );

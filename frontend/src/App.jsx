@@ -395,6 +395,7 @@ const handleSignOut = async () => {
             isOpen={showCart}
             onClose={() => setShowCart(false)}
             cart={cart}
+            showToast={showToast}
             onUpdateQty={handleUpdateCartQuantity}
             onRemoveItem={async (bid) => {
               await api.removeFromCart({ customer_id: user.id, book_id: bid });
