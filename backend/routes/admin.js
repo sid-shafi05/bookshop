@@ -225,41 +225,6 @@ router.get('/coupons', async (req, res) => {
   }
 });
 
-
-  try {
-    values.push(couponId);
-    const result = await pool.query(
-      `UPDATE coupons
-       SET ${fields.join(', ')}
-       WHERE coupon_id = $${values.length}
-       RETURNING *`,
-      values
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Coupon not found.' });
-    }
-
-    const updatedCoupon = result.rows[0];
-    if (updatedCoupon.is_active) {
-      await notifyCustomers({
-        text: `Coupon ${updatedCoupon.code} is now active: ${updatedCoupon.discount_percent}% off with a minimum spend of Tk ${updatedCoupon.min_order_amount || 0}.`,
-        topic: 'general',
-        referenceType: 'coupon',
-        referenceId: updatedCoupon.coupon_id,
-      });
-    }
-
-    res.json(updatedCoupon);
-  } catch (err) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'A coupon with this code already exists.' });
-    }
-    console.error('Error updating coupon:', err.message);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
 router.delete('/books/:id', async (req, res) => {
     const { id } = req.params;
     try {
