@@ -1990,7 +1990,6 @@ const EMPTY_COUPON_FORM = {
   expiry_date: '',
   min_order_amount: '',
   max_discount: '',
-  usage_limit: '', // blank = unlimited
   is_active: true,
 };
 
@@ -2026,7 +2025,6 @@ function CouponsTab() {
     expiry_date: form.expiry_date || null,
     min_order_amount: form.min_order_amount === '' ? 0 : Number(form.min_order_amount),
     max_discount: form.max_discount === '' ? null : Number(form.max_discount),
-    usage_limit: form.usage_limit === '' ? null : Number(form.usage_limit),
     is_active: form.is_active,
   });
 
@@ -2051,7 +2049,6 @@ function CouponsTab() {
       expiry_date: coupon.expiry_date ? coupon.expiry_date.slice(0, 10) : '',
       min_order_amount: coupon.min_order_amount ?? '',
       max_discount: coupon.max_discount ?? '',
-      usage_limit: coupon.usage_limit ?? '',
       is_active: coupon.is_active,
     });
   };
@@ -2059,8 +2056,6 @@ function CouponsTab() {
   const handleEditSubmit = async (e, id) => {
     e.preventDefault();
     try {
-      // code is immutable after creation to avoid confusing anyone who
-      // already has the old code — only the terms/limits get updated.
       const { code, ...rest } = buildPayload(editForm);
       await api.updateCoupon(id, rest);
       setEditingId(null);
@@ -2142,11 +2137,7 @@ function CouponsTab() {
                   <td>{Number(c.discount_percent)}%{c.max_discount ? ` (max Tk ${Number(c.max_discount).toFixed(2)})` : ''}</td>
                   <td>{Number(c.min_order_amount) > 0 ? `Tk ${Number(c.min_order_amount).toFixed(2)}` : '—'}</td>
                   <td>{c.expiry_date ? new Date(c.expiry_date).toLocaleDateString() : 'No expiry'}</td>
-                  <td>
-                    {c.usage_limit
-                      ? `${c.times_used} / ${c.usage_limit}`
-                      : `${c.times_used} (unlimited)`}
-                  </td>
+                  <td>Unlimited</td>
                   <td>
                     <span className={`admin-stock-pill ${c.is_active ? 'ok' : 'out'}`}>
                       {c.is_active ? 'Active' : 'Inactive'}
@@ -2203,12 +2194,6 @@ function CouponFormFields({ form, setForm, codeEditable }) {
         value={form.expiry_date}
         onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
       />
-      <input
-        placeholder="Usage limit (blank = unlimited)"
-        type="number" min="1" step="1"
-        value={form.usage_limit}
-        onChange={(e) => setForm({ ...form, usage_limit: e.target.value })}
-      />
       <select
         value={form.is_active ? 'active' : 'inactive'}
         onChange={(e) => setForm({ ...form, is_active: e.target.value === 'active' })}
@@ -2219,6 +2204,7 @@ function CouponFormFields({ form, setForm, codeEditable }) {
     </div>
   );
 }
+
 /* ==========================================================================
    USERS TAB — Create Admin: Name + Email only
    ========================================================================== */

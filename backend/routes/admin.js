@@ -87,207 +87,6 @@ function normalizeGoogleBookMetadata(item) {
   };
 }
 
-async function fetchOpenLibraryMetadata(query) {
-  const normalized = String(query || '').trim();
-  if (!normalized) return null;
-
-  try {
-    const response = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(normalized)}&limit=1`
-    );
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const doc = data.docs?.[0];
-    if (!doc) return null;
-
-    const isbn = Array.isArray(doc.isbn) ? doc.isbn.find((value) => value && value.length >= 10) || doc.isbn[0] : '';
-    const cover_id = doc.cover_i;
-    const cover_url = cover_id ? `https://covers.openlibrary.org/b/id/${cover_id}-L.jpg` : '';
-
-    return {
-      title: doc.title || '',
-      isbn: isbn || '',
-      description: '',
-      publication_year: doc.first_publish_year || null,
-      cover_url,
-      authors: Array.isArray(doc.author_name) ? doc.author_name : [],
-      publisher: Array.isArray(doc.publisher) ? doc.publisher[0] || '' : ''
-    };
-  } catch (err) {
-    console.warn('Open Library fallback failed:', err.message);
-    return null;
-  }
-}
-
-// All routes below require a valid admin token
-router.use(verifyToken, requireAdmin);
-
-router.get('/lookup-external-book', async (req, res) => {
-  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-
-  if (!q) {
-    return res.status(400).json({ error: 'Please enter a title or ISBN to look up.' });
-  }
-
-  const cleanQuery = q.replace(/\s+/g, ' ').trim();
-  const isIsbn = /^[\d\s-]{10,17}$/.test(cleanQuery.replace(/-/g, ''));
-  const googleSearchTerm = isIsbn ? `isbn:${cleanQuery}` : `intitle:${cleanQuery}`;
-
-  try {
-    const googleResponse = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(googleSearchTerm)}&maxResults=1`
-    );
-
-    if (googleResponse.ok) {
-      const googleData = await googleResponse.json();
-      const item = googleData.items?.[0];
-
-      if (item) {
-        const normalized = normalizeGoogleBookMetadata(item);
-        if (normalized.title) {
-          return res.json(normalized);
-        }
-      }
-    } else if (googleResponse.status !== 429) {
-      console.warn('Google Books lookup returned non-429 error:', googleResponse.status);
-    }
-
-    const fallback = await fetchOpenLibraryMetadata(cleanQuery);
-    if (fallback && fallback.title) {
-      return res.json(fallback);
-    }
-
-    return res.status(404).json({ error: 'No book metadata found for that title or ISBN.' });
-  } catch (err) {
-    console.error('Error looking up external book metadata:', err.message);
-
-    try {
-      const fallback = await fetchOpenLibraryMetadata(cleanQuery);
-      if (fallback && fallback.title) {
-        return res.json(fallback);
-      }
-    } catch (fallbackErr) {
-      console.error('Fallback lookup also failed:', fallbackErr.message);
-    }
-
-    res.status(500).json({ error: 'Failed to fetch external book metadata.' });
-  }
-});
-
-// ====================================================================
-// BOOKS  (unchanged)
-// ====================================================================
-
-function parseCategoryIds(rawValue) {
-  const rawArray = Array.isArray(rawValue) ? rawValue : [rawValue];
-  const values = rawArray
-    .flatMap((item) => {
-      if (Array.isArray(item)) return item;
-      if (typeof item === 'string') {
-        if (item.includes(',')) {
-          return item.split(',');
-        }
-        return [item];
-      }
-      return [item];
-    })
-    .map((value) => String(value).trim())
-    .filter(Boolean)
-    .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
-
-  return [...new Set(values)];
-}
-
-router.post('/books', upload.single('cover_image'), async (req, res) => {
-  const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
-  const isbn = typeof req.body.isbn === 'string' ? req.body.isbn.trim() || null : null;
-  const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
-  const publisher_name = typeof req.body.publisher_name === 'string' ? req.body.publisher_name.trim() : '';
-  const author_names = typeof req.body.author_names === 'string' ? req.body.author_names.trim() : '';
-  const categoryIds = parseCategoryIds(req.body.category_ids || req.body.category_id || []);
-  const price = Number(req.body.price);
-  const stock_quantity = Number(req.body.stock_quantity);
-  const publication_year = req.body.publication_year ? Number(req.body.publication_year) : null;
-  const cover_url = req.file ? `/images/books/${req.file.filename}` : (req.body.existing_cover_url || null);
-
-  if (!title || !Number.isFinite(price) || !Number.isInteger(stock_quantity) || stock_quantity < 0) {
-    return res.status(400).json({ error: 'Title, valid price, and non-negative stock quantity are required' });
-  }
-  if (publication_year && (!Number.isInteger(publication_year) || publication_year < 1000 || publication_year > 2100)) {
-    return res.status(400).json({ error: 'Publication year must be between 1000 and 2100' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const result = await client.query(
-      'INSERT INTO books (title, isbn, description, price, stock_quantity, publication_year, cover_url, publisher_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-      [
-        title,
-        isbn,
-        description || null,
-        price,
-        stock_quantity,
-        publication_year || null,
-        cover_url,
-        null
-      ]
-    );
-
-    const book = result.rows[0];
-
-    if (publisher_name) {
-      const publisherId = await findOrCreatePublisher(client, publisher_name);
-      if (publisherId) {
-        await client.query('UPDATE books SET publisher_id = $1 WHERE book_id = $2', [publisherId, book.book_id]);
-      }
-    }
-
-    if (author_names) {
-      const authors = author_names
-        .split(',')
-        .map((name) => name.trim())
-        .filter(Boolean);
-
-      for (const authorName of authors) {
-        const authorId = await findOrCreateAuthor(client, authorName);
-        if (authorId) {
-          await client.query(
-            'INSERT INTO book_authors (book_id, author_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [book.book_id, authorId]
-          );
-        }
-      }
-    }
-
-    if (categoryIds.length > 0) {
-      for (const categoryId of categoryIds) {
-        await client.query(
-          'INSERT INTO book_categories (book_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [book.book_id, categoryId]
-        );
-      }
-    }
-
-    await client.query('COMMIT');
-    res.status(201).json(book);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    if (err.code === '23505') {
-      res.status(409).json({ error: 'A book with this ISBN already exists' });
-      return;
-    }
-    console.error('Error adding book:', err);
-    res.status(500).json({ error: err.message || 'Internal Server Error' });
-  } finally {
-    client.release();
-  }
-});
-
 router.get('/books', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -426,109 +225,6 @@ router.get('/coupons', async (req, res) => {
   }
 });
 
-router.post('/coupons', async (req, res) => {
-  const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
-  const discountPercent = Number(req.body.discount_percent);
-  const minOrderAmount = Number(req.body.min_order_amount ?? 0);
-  const maxDiscount = req.body.max_discount === null || req.body.max_discount === undefined || req.body.max_discount === ''
-    ? null
-    : Number(req.body.max_discount);
-  const expiryDate = typeof req.body.expiry_date === 'string' && req.body.expiry_date ? req.body.expiry_date : null;
-
-  if (!code || !/^[A-Z0-9_-]+$/.test(code)) {
-    return res.status(400).json({ error: 'Coupon code is required and may contain only letters, numbers, underscores, and dashes.' });
-  }
-  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-    return res.status(400).json({ error: 'Discount must be between 0 and 100 percent.' });
-  }
-  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) {
-    return res.status(400).json({ error: 'Minimum order amount must be zero or more.' });
-  }
-  if (maxDiscount !== null && (!Number.isFinite(maxDiscount) || maxDiscount < 0)) {
-    return res.status(400).json({ error: 'Maximum discount must be zero or more.' });
-  }
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO coupons (code, discount_percent, expiry_date, min_order_amount, max_discount, is_active)
-       VALUES ($1, $2, $3, $4, $5, TRUE)
-       RETURNING *`,
-      [code, discountPercent, expiryDate || null, minOrderAmount, maxDiscount]
-    );
-
-    const coupon = result.rows[0];
-    await notifyCustomers({
-      text: `New coupon ${coupon.code} is now live: ${coupon.discount_percent}% off on orders of Tk ${coupon.min_order_amount || 0}+.`,
-      topic: 'general',
-      referenceType: 'coupon',
-      referenceId: coupon.coupon_id,
-    });
-
-    res.status(201).json(coupon);
-  } catch (err) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'A coupon with this code already exists.' });
-    }
-    console.error('Error creating coupon:', err.message);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-router.put('/coupons/:id', async (req, res) => {
-  const couponId = Number(req.params.id);
-  if (!Number.isInteger(couponId)) {
-    return res.status(400).json({ error: 'Invalid coupon id.' });
-  }
-
-  const fields = [];
-  const values = [];
-
-  if (req.body.code !== undefined) {
-    const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
-    if (!code || !/^[A-Z0-9_-]+$/.test(code)) {
-      return res.status(400).json({ error: 'Coupon code is invalid.' });
-    }
-    fields.push('code = $' + (fields.length + 1));
-    values.push(code);
-  }
-  if (req.body.discount_percent !== undefined) {
-    const discountPercent = Number(req.body.discount_percent);
-    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-      return res.status(400).json({ error: 'Discount must be between 0 and 100 percent.' });
-    }
-    fields.push('discount_percent = $' + (fields.length + 1));
-    values.push(discountPercent);
-  }
-  if (req.body.min_order_amount !== undefined) {
-    const minOrderAmount = Number(req.body.min_order_amount ?? 0);
-    if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) {
-      return res.status(400).json({ error: 'Minimum order amount must be zero or more.' });
-    }
-    fields.push('min_order_amount = $' + (fields.length + 1));
-    values.push(minOrderAmount);
-  }
-  if (req.body.max_discount !== undefined) {
-    const maxDiscount = req.body.max_discount === null || req.body.max_discount === '' ? null : Number(req.body.max_discount);
-    if (maxDiscount !== null && (!Number.isFinite(maxDiscount) || maxDiscount < 0)) {
-      return res.status(400).json({ error: 'Maximum discount must be zero or more.' });
-    }
-    fields.push('max_discount = $' + (fields.length + 1));
-    values.push(maxDiscount);
-  }
-  if (req.body.expiry_date !== undefined) {
-    const expiryDate = req.body.expiry_date ? String(req.body.expiry_date) : null;
-    fields.push('expiry_date = $' + (fields.length + 1));
-    values.push(expiryDate);
-  }
-  if (req.body.is_active !== undefined) {
-    const isActive = Boolean(req.body.is_active);
-    fields.push('is_active = $' + (fields.length + 1));
-    values.push(isActive);
-  }
-
-  if (fields.length === 0) {
-    return res.status(400).json({ error: 'No coupon fields were supplied.' });
-  }
 
   try {
     values.push(couponId);
@@ -1182,8 +878,6 @@ router.post('/coupons', async (req, res) => {
     ? Number(req.body.min_order_amount) : 0;
   const max_discount = req.body.max_discount !== undefined && req.body.max_discount !== ''
     ? Number(req.body.max_discount) : null;
-  const usage_limit = req.body.usage_limit !== undefined && req.body.usage_limit !== ''
-    ? Number(req.body.usage_limit) : null; // null = unlimited
   const is_active = req.body.is_active !== undefined ? Boolean(req.body.is_active) : true;
 
   if (!code) return res.status(400).json({ error: 'Coupon code is required' });
@@ -1196,15 +890,12 @@ router.post('/coupons', async (req, res) => {
   if (max_discount !== null && (!Number.isFinite(max_discount) || max_discount < 0)) {
     return res.status(400).json({ error: 'Max discount must be zero or more' });
   }
-  if (usage_limit !== null && (!Number.isInteger(usage_limit) || usage_limit <= 0)) {
-    return res.status(400).json({ error: 'Usage limit must be a positive whole number, or left blank for unlimited' });
-  }
 
   try {
     const result = await pool.query(
-      `INSERT INTO coupons (code, discount_percent, expiry_date, min_order_amount, max_discount, usage_limit, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [code, discount_percent, expiry_date, min_order_amount, max_discount, usage_limit, is_active]
+      `INSERT INTO coupons (code, discount_percent, expiry_date, min_order_amount, max_discount, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [code, discount_percent, expiry_date, min_order_amount, max_discount, is_active]
     );
     const coupon = result.rows[0];
 
@@ -1215,10 +906,9 @@ router.post('/coupons', async (req, res) => {
       ? ` on orders over Tk ${Number(coupon.min_order_amount).toFixed(2)}` : '';
     const expiryText = coupon.expiry_date
       ? ` Valid until ${new Date(coupon.expiry_date).toLocaleDateString()}.` : '';
-    const limitText = coupon.usage_limit ? ` Limited to the first ${coupon.usage_limit} uses.` : '';
 
     notifyCustomers({
-      text: `New coupon "${coupon.code}"! Get ${discountText}${minOrderText}.${expiryText}${limitText}`,
+      text: `New coupon "${coupon.code}"! Get ${discountText}${minOrderText}.${expiryText} This coupon is active for unlimited use while valid.`,
       topic: 'general',
     }).catch(err => console.error('Coupon notification fan-out failed:', err.message));
 
@@ -1234,7 +924,7 @@ router.post('/coupons', async (req, res) => {
 
 router.put('/coupons/:id', async (req, res) => {
   const { id } = req.params;
-  const fields = ['discount_percent', 'expiry_date', 'min_order_amount', 'max_discount', 'usage_limit', 'is_active'];
+  const fields = ['discount_percent', 'expiry_date', 'min_order_amount', 'max_discount', 'is_active'];
   const updates = {};
   for (const f of fields) {
     if (req.body[f] !== undefined) updates[f] = req.body[f] === '' ? null : req.body[f];
@@ -1246,12 +936,6 @@ router.put('/coupons/:id', async (req, res) => {
     const dp = Number(updates.discount_percent);
     if (!Number.isFinite(dp) || dp <= 0 || dp > 100) {
       return res.status(400).json({ error: 'Discount percent must be between 0 and 100' });
-    }
-  }
-  if (updates.usage_limit !== undefined && updates.usage_limit !== null) {
-    const ul = Number(updates.usage_limit);
-    if (!Number.isInteger(ul) || ul <= 0) {
-      return res.status(400).json({ error: 'Usage limit must be a positive whole number, or blank for unlimited' });
     }
   }
 

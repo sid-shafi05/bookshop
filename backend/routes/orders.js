@@ -116,13 +116,6 @@ router.post('/checkout', async (req, res) => {
         [item.quantity, item.book_id]
       );
     }
-    if (coupon) {
-  await client.query(
-    `UPDATE coupons SET times_used = times_used + 1 WHERE coupon_id = $1`,
-    [coupon.coupon_id]
-  );
-}
-
     await client.query(
       `DELETE FROM cart_items WHERE cart_id = (SELECT cart_id FROM carts WHERE customer_id = $1)`,
       [customer_id]
