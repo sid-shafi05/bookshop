@@ -30,6 +30,11 @@ async function request(path, options = {}) {
   return data;
 }
 
+// Generic GET method for any path
+async function get(path) {
+  return request(path, { method: 'GET' });
+}
+
 async function requestFormData(path, formData, method = 'POST') {
   const token = getStoredToken();
   const headers = {};
@@ -71,9 +76,15 @@ export const api = {
   updateOrderStatus: (orderId, newStatus) => request(`/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }),
 
   // Returns
-  requestReturn: (orderId, orderItemIds, reason) => request(`/orders/${orderId}/return`, { method: 'POST', body: JSON.stringify({ order_item_ids: orderItemIds, reason }) }),
+  requestReturn: (orderId, reason, itemIds) => request(`/orders/${orderId}/return`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, item_ids: itemIds }),
+  }),
   getAdminReturns: () => request('/admin/returns'),
-  resolveReturn: (returnId, decision, condition) => request(`/admin/returns/${returnId}`, { method: 'PUT', body: JSON.stringify({ decision, condition }) }),
+  resolveReturn: (returnId, decision, condition) => request(`/admin/returns/${returnId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ decision, condition }),
+  }),
 
   // Delivery assignment (admin)
   getDeliverymen: () => request('/admin/deliverymen'),
@@ -163,10 +174,23 @@ export const api = {
   deleteUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
 
 
+  // Analytics
+  getQuickStats: () => request('/admin/analytics/quick-stats'),
+  getRevenue: (months = 12) => request(`/admin/analytics/revenue?months=${months}`),
+  getTopBooks: (limit = 10) => request(`/admin/analytics/top-books?limit=${limit}`),
+  getLowStock: (threshold = 10) => request(`/admin/analytics/low-stock?threshold=${threshold}`),
+  getCategoryRevenue: () => request('/admin/analytics/category-revenue'),
+  getTopRated: (limit = 10) => request(`/admin/analytics/top-rated?limit=${limit}`),
+  getOrderFunnel: () => request('/admin/analytics/order-funnel'),
+
+
   //Coupons
   getAdminCoupons: () => request('/admin/coupons'),
   createCoupon: (data) => request('/admin/coupons', { method: 'POST', body: JSON.stringify(data) }),
   updateCoupon: (id, data) => request(`/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCoupon: (id) => request(`/admin/coupons/${id}`, { method: 'DELETE' }),
+
+  // Generic GET
+  get: (path) => request(path, { method: 'GET' }),
 
 };

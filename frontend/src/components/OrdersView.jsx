@@ -17,8 +17,8 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
 
-  // Return state - checkbox multi-select
-  const [returnTarget, setReturnTarget] = useState(null); // { order_id, selectedItems: [{order_item_id, title, quantity, unit_price}] }
+  const [returnTarget, setReturnTarget] = useState(null); // { order_id }
+  const [selectedReturnItemIds, setSelectedReturnItemIds] = useState([]);
   const [returnReason, setReturnReason] = useState('');
   const [submittingReturn, setSubmittingReturn] = useState(false);
 
@@ -26,6 +26,14 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
   const [ordersWithPendingReturns, setOrdersWithPendingReturns] = useState(new Set());
 
   const highlightRef = useRef(null);
+
+  const paymentLabel = (paymentStatus) => paymentStatus === 'partial_refund'
+    ? 'Partially refunded'
+    : paymentStatus === 'refunded'
+      ? 'Refunded'
+      : paymentStatus === 'paid'
+        ? 'Paid'
+        : paymentStatus || 'Unpaid';
 
   const loadOrders = async () => {
     if (!customerId) return;
@@ -105,7 +113,9 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
           delivery: data.delivery,
           can_review: data.can_review,
           can_return: data.can_return,
-          return_requests: data.return_requests || [],
+          return_window_expired: data.return_window_expired,
+          return_window_days: data.return_window_days || 10,
+          return_request: data.return_request,
         },
       }));
     } catch (err) {
@@ -221,18 +231,18 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
 
   const submitReturn = async (e) => {
     e.preventDefault();
-    if (!returnTarget || returnTarget.selectedItems.length === 0) return;
+    if (!returnTarget) return;
+    if (selectedReturnItemIds.length === 0) {
+      alert('Select at least one book to return');
+      return;
+    }
     setSubmittingReturn(true);
     try {
-      const orderItemIds = returnTarget.selectedItems.map(item => item.order_item_id);
-      const created = await api.requestReturn(returnTarget.order_id, orderItemIds, returnReason.trim());
-      // Update local state to show return requests
-      const returnRequests = returnTarget.selectedItems.map((item, idx) => ({
-        return_id: created.return_ids[idx],
-        order_item_id: item.order_item_id,
-        status: 'requested',
-        reason: returnReason.trim(),
-      }));
+      const created = await api.requestReturn(
+        returnTarget.order_id,
+        returnReason.trim(),
+        selectedReturnItemIds
+      );
       setDetailCache((prev) => ({
         ...prev,
         [returnTarget.order_id]: {
@@ -245,6 +255,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
       setOrdersWithPendingReturns(prev => new Set(prev).add(returnTarget.order_id));
       setReturnTarget(null);
       setReturnReason('');
+      setSelectedReturnItemIds([]);
     } catch (err) {
       alert(err.message || 'Failed to submit return request');
     } finally {
@@ -252,49 +263,12 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
     }
   };
 
-  // Open return modal for an order - fetches items if not cached
-  const openReturnModal = async (order) => {
-    // Check if we have detail cached
-    const detail = detailCache[order.order_id];
-    if (detail && detail.items) {
-      setReturnTarget({
-        order_id: order.order_id,
-        selectedItems: [],
-        items: detail.items.map(item => ({
-          order_item_id: item.order_item_id,
-          title: item.title,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-        }))
-      });
-      return;
-    }
-    // Fetch order detail first
-    try {
-      const data = await api.getOrderDetail(order.order_id);
-      setDetailCache((prev) => ({
-        ...prev,
-        [order.order_id]: {
-          items: data.items || [],
-          delivery: data.delivery,
-          can_review: data.can_review,
-          can_return: data.can_return,
-          return_requests: data.return_requests || [],
-        },
-      }));
-      setReturnTarget({
-        order_id: order.order_id,
-        selectedItems: [],
-        items: (data.items || []).map(item => ({
-          order_item_id: item.order_item_id,
-          title: item.title,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-        }))
-      });
-    } catch (err) {
-      alert(err.message || 'Failed to load order details');
-    }
+  const openReturnForm = (orderId, items) => {
+    setReturnTarget({ order_id: orderId });
+    setReturnReason('');
+    setSelectedReturnItemIds(
+      items.filter((item) => !item.return_requested).map((item) => item.order_item_id)
+    );
   };
 
   return (
@@ -334,7 +308,7 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       <span className={`order-status status-${status}`}>{order.status || 'Pending'}</span>
                       {' · '}
                       <span className={`order-payment status-${order.payment_status}`}>
-                        {order.payment_status === 'paid' ? 'Paid' : order.payment_status === 'partial_refund' ? 'Partial Refund' : order.payment_status === 'refunded' ? 'Refunded' : 'Unpaid'}
+                        {paymentLabel(order.payment_status)}
                       </span>
                     </div>
                     <div className="order-meta">
@@ -420,21 +394,35 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
                       </button>
                     )}
 
-                    {detail?.return_requests && detail.return_requests.length > 0 && (
-                      <div className="return-requests-summary">
-                        <p className="order-delivery-note compact-note">
-                          One request per order. 10-day delivery window.
-                        </p>
-                        {detail.return_requests.map(r => (
-                          <p key={r.return_id} className="order-delivery-note">
-                            Return <strong>{r.status}</strong>: {r.reason}
-                          </p>
-                        ))}
-                      </div>
+                    {detail?.can_return && (
+                      <button
+                        className="btn-danger-outline"
+                        onClick={() => openReturnForm(order.order_id, detail.items)}
+                      >
+                        Request Return
+                      </button>
                     )}
 
                     {detail && order.status === 'delivered' && order.delivery_status === 'delivered' && returnEligibility.message && (
                       <p className="order-delivery-note compact-note">{returnEligibility.message}</p>
+                    )}
+
+                    {detail && !detail.return_request && status !== 'delivered' && (
+                      <p className="order-delivery-note">
+                        Returns are available within 10 days after delivery.
+                      </p>
+                    )}
+
+                    {detail?.return_window_expired && !detail.return_request && (
+                      <p className="order-delivery-note">
+                        The 10-day return window for this order has expired.
+                      </p>
+                    )}
+
+                    {detail?.return_request && (
+                      <p className="order-delivery-note">
+                        Only one return request is allowed per order.
+                      </p>
                     )}
 
                   </div>
@@ -481,36 +469,43 @@ export default function OrdersView({ customerId, initialOrderId, onCartChanged, 
         {returnTarget && returnTarget.order_id && (
           <div className="review-modal-overlay" onClick={() => setReturnTarget(null)}>
             <form className="review-modal" onClick={(e) => e.stopPropagation()} onSubmit={submitReturn}>
-              <h4>Request Return for Order #{returnTarget.order_id}</h4>
-              <div className="return-items-list">
-                {(returnTarget.items || []).map(item => {
-                  const isSelected = returnTarget.selectedItems?.some(si => si.order_item_id === item.order_item_id);
-                  return (
-                    <div key={item.order_item_id} className="return-item-preview">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', cursor: 'pointer' }}>
+              <h4>Request Return</h4>
+              <p>Select the books you want to return:</p>
+              <ul className="return-item-list">
+                {(detailCache[returnTarget.order_id]?.items || [])
+                  .filter((item) => !item.return_requested)
+                  .map((item) => (
+                    <li key={item.order_item_id}>
+                      <label className="return-item-option">
                         <input
                           type="checkbox"
-                          checked={isSelected}
+                          checked={selectedReturnItemIds.includes(item.order_item_id)}
                           onChange={(e) => {
-                            if (e.target.checked) {
-                              setReturnTarget(prev => ({
-                                ...prev,
-                                selectedItems: [...(prev?.selectedItems || []), item]
-                              }));
-                            } else {
-                              setReturnTarget(prev => ({
-                                ...prev,
-                                selectedItems: prev.selectedItems.filter(si => si.order_item_id !== item.order_item_id)
-                              }));
-                            }
+                            setSelectedReturnItemIds((prev) => e.target.checked
+                              ? [...prev, item.order_item_id]
+                              : prev.filter((id) => id !== item.order_item_id));
                           }}
                         />
-                        <span>{item.title} × {item.quantity}</span>
-                        <span>Tk {Number(item.unit_price * item.quantity).toFixed(2)}</span>
+                        {item.title || `Book #${item.book_id}`} × {item.quantity ?? 1}
                       </label>
-                    </div>
-                  );
-                })}
+                    </li>
+                  ))}
+              </ul>
+              <label>
+                Reason
+                <textarea
+                  required
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Why are you returning this order?"
+                  rows={3}
+                />
+              </label>
+              <div className="admin-form-actions">
+                <button type="submit" className="btn-save" disabled={submittingReturn}>
+                  {submittingReturn ? 'Submitting…' : 'Submit Return Request'}
+                </button>
+                <button type="button" className="btn-cancel" onClick={() => setReturnTarget(null)}>Cancel</button>
               </div>
               {(returnTarget.selectedItems?.length || 0) > 0 && (
                 <>

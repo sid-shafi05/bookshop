@@ -102,10 +102,9 @@ export default function BookDetails({ book, customerId, onBack, onAddToCart, onA
           <p>ISBN: {book.isbn || 'Not provided'}</p>
           {book.publication_year && <p>Published: {book.publication_year}</p>}
           <div className="book-details-price">Tk {Number(book.price).toFixed(2)}</div>
-          <div className={`stock-indicator ${stockState === 'in' ? 'in-stock' : stockState === 'low' ? 'low-stock' : 'out-stock'}`}>
-            {stockText}
-          </div>
-          {stockState === 'low' && <div className="stock-warning">Low stock — add soon before it sells out</div>}
+          {book.stock_quantity > 0 && book.stock_quantity <= 5 && (
+            <p className="stock-warning">Only {book.stock_quantity} left in stock</p>
+          )}
           <div className="book-details-actions">
             <button className="cart-action-btn" disabled={stockQty <= 0} onClick={() => onAddToCart(book.book_id)}>
               {stockQty > 0 ? 'Add to Cart' : 'Out of Stock'}
